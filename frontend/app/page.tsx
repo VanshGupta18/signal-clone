@@ -22,7 +22,7 @@ import { api, clearToken, getToken } from "@/lib/api";
 import { showNotification } from "@/lib/notifications";
 import { useShortcuts } from "@/lib/shortcuts";
 import { greeting } from "@/lib/time";
-import { connect, disconnect, sendEvent, sendMessage, subscribe } from "@/lib/socket";
+import { connect, disconnect, isOpen, sendEvent, sendMessage, subscribe } from "@/lib/socket";
 import type { Conversation, Message, MessagePage, ServerEvent, User } from "@/types";
 import dialogStyles from "@/components/Dialog.module.css";
 import styles from "./page.module.css";
@@ -42,6 +42,13 @@ const loadMessages = (id: number, beforeId?: number, signal?: AbortSignal) =>
 function withNewer(conversationId: number, page: Message[], current: Message[]): Message[] {
   const lastId = page.length ? page[page.length - 1].id : 0;
   return [...page, ...current.filter((m) => m.conversation_id === conversationId && m.id > lastId)];
+}
+
+// The browser knows when the network is gone: say so instead of a generic failure.
+function historyError(): string {
+  return typeof navigator !== "undefined" && !navigator.onLine
+    ? "You're offline. Your messages will load when you're back online."
+    : "Couldn't load messages. Try again?";
 }
 
 // Read = I'm actually looking at it: the chat is open and the tab is visible.
@@ -121,7 +128,7 @@ export default function Home() {
         setHasOlder(page.has_more);
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setMessageError("Couldn't load messages. Try again?");
+        if (err.name !== "AbortError") setMessageError(historyError());
       })
       .finally(() => setLoadingMessages(false));
     markRead(openId);
@@ -141,7 +148,7 @@ export default function Home() {
         setHistoryCursor(page.next_before_id);
         setHasOlder(page.has_more);
       })
-      .catch(() => setMessageError("Couldn't load messages. Try again?"))
+      .catch(() => setMessageError(historyError()))
       .finally(() => setLoadingMessages(false));
   }
 
@@ -159,6 +166,29 @@ export default function Home() {
       setLoadingOlder(false);
     }
   }
+
+  // The browser reports network changes right away; the socket only notices a dead connection
+  // when it times out, and a short outage may not close it at all.
+  useEffect(() => {
+    const goOffline = () => setConnectionStatus("offline");
+    const goOnline = () => setConnectionStatus(isOpen() ? "connected" : "connecting");
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => {
+      window.removeEventListener("offline", goOffline);
+      window.removeEventListener("online", goOnline);
+    };
+  }, []);
+
+  // A history load that failed while offline retries as soon as the network is back
+  // (even if the socket survived the outage and never sends socket:open).
+  useEffect(() => {
+    if (!messageError) return;
+    const retry = () => retryHistory();
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- retryHistory only reads openId, covered here
+  }, [messageError, openId]);
 
   // One socket for the session, opened once we know the token is valid.
   const loggedIn = me !== null;
@@ -256,6 +286,7 @@ export default function Home() {
               setMessages((current) => withNewer(openId, page.messages, current));
               setHistoryCursor(page.next_before_id);
               setHasOlder(page.has_more);
+              setMessageError(""); // a load that failed while offline recovers by itself
             }).catch(() => {});
             markRead(openId);
           }

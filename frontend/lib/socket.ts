@@ -76,6 +76,10 @@ export function disconnect() {
   }
 }
 
+export function isOpen(): boolean {
+  return socket?.readyState === WebSocket.OPEN;
+}
+
 export function subscribe(listener: (event: ServerEvent) => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

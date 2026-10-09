@@ -97,7 +97,10 @@
 }
 
 .inlineError {
-  margin: 16px;
+  /* auto margins center the card in the chat column and keep the composer at the bottom */
+  margin: auto 16px;
+  align-self: center;
+  max-width: 420px;
   padding: 16px;
   border-radius: 10px;
   background: var(--error-bg);
