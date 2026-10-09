@@ -1,4 +1,5 @@
 fastapi
 uvicorn[standard]
+pyturso==0.8.2
 pytest
 httpx

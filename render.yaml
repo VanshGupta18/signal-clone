@@ -1,0 +1,19 @@
+# Render Blueprint: backend only (frontend is on Vercel).
+services:
+  - type: web
+    name: signal-clone-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # seed.py is a no-op when users already exist. --no-access-log keeps the
+    # WebSocket ?token= out of the logs.
+    startCommand: python seed.py && uvicorn app.main:app --host 0.0.0.0 --port $PORT --no-access-log
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.12
+      - key: TURSO_DATABASE_URL
+        sync: false  # set in the Render dashboard
+      - key: TURSO_AUTH_TOKEN
+        sync: false
