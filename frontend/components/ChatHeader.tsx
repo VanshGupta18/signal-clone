@@ -58,7 +58,7 @@ export default function ChatHeader({ conversation, onOpenDetails, onSafetyNumber
           {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
           {connectionStatus !== "connected" && (
             <div className={styles.connection} aria-live="polite">
-              {connectionStatus === "connecting" ? "Connecting…" : "Offline — messages will retry"}
+              {connectionStatus === "connecting" ? "Connecting…" : "Offline. Messages will send when you're back."}
             </div>
           )}
         </div>

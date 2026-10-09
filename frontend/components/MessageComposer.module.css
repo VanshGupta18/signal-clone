@@ -25,7 +25,7 @@
 }
 
 .inputWrap:focus-within {
-  border-color: #2c6bed;
+  border-color: var(--accent);
   background: var(--bg);
 }
 
@@ -115,8 +115,8 @@
   flex-shrink: 0;
   border: none;
   border-radius: 50%;
-  background: #2c6bed;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--on-accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -124,7 +124,7 @@
 }
 
 .send:hover {
-  background: #1851b4;
+  background: var(--accent-hover);
 }
 
 /* "Replying to" bar above the input: Signal's quote box + a close button. */
@@ -162,4 +162,14 @@
   font-size: 13px;
   line-height: 18px;
   color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .send {
+    transition: background-color 150ms ease-out, transform 150ms ease-out;
+  }
+
+  .send:active {
+    transform: scale(0.94);
+  }
 }

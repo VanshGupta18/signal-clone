@@ -8,6 +8,8 @@
 
 .placeholder {
   height: 100%;
+  padding: 24px;
+  text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -17,21 +19,15 @@
 }
 
 .placeholder h2 {
+  margin-top: 12px;
   font-size: 20px;
   font-weight: 600;
   color: var(--text);
 }
 
-.placeholderIcon {
-  width: 80px;
-  height: 80px;
-  margin-bottom: 12px;
-  border-radius: 50%;
-  background: var(--hover);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.placeholder p {
+  max-width: 320px;
+  line-height: 20px;
 }
 
 .paneEmpty {
@@ -159,7 +155,7 @@
 }
 
 .switch:checked {
-  background: #2c6bed;
+  background: var(--accent);
 }
 
 .switch:checked::after {
@@ -232,7 +228,8 @@
   height: 40px;
   padding: 0 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: 10px;
+  background: var(--bg);
   font: inherit;
   font-size: 14px;
   color: var(--text);
@@ -240,7 +237,7 @@
 }
 
 .input:focus {
-  border-color: #2c6bed;
+  border-color: var(--accent);
 }
 
 .phone {
@@ -273,5 +270,5 @@
 }
 
 .choice input {
-  accent-color: #2c6bed;
+  accent-color: var(--accent);
 }

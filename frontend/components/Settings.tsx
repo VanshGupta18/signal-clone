@@ -4,7 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Bell, Camera, CircleUser, Keyboard, Laptop, Lock, LogOut, Palette } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import { toast } from "@/components/Toast";
-import { api } from "@/lib/api";
+import { api, friendlyError } from "@/lib/api";
 import { resizeToDataUrl } from "@/lib/image";
 import { notificationsEnabled, notificationsSupported, setNotificationsEnabled } from "@/lib/notifications";
 import { getTheme, setTheme, type Theme } from "@/lib/theme";
@@ -203,7 +203,7 @@ function Profile({ me, onSaved }: { me: User; onSaved: (user: User) => void }) {
     try {
       setAvatar(await resizeToDataUrl(file, 128));
     } catch {
-      setError("Couldn't read that image");
+      setError("Couldn't use that image. Try a JPG or PNG.");
     }
   }
 
@@ -216,9 +216,9 @@ function Profile({ me, onSaved }: { me: User; onSaved: (user: User) => void }) {
         body: JSON.stringify({ display_name: name, avatar_url: avatar }),
       });
       onSaved(user);
-      toast("Profile updated");
+      toast("Profile saved");
     } catch (err) {
-      setError((err as Error).message);
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }

@@ -1,0 +1,46 @@
+.circle {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.incoming {
+  fill: var(--illustration-bubble);
+}
+
+.outgoing {
+  fill: var(--accent);
+}
+
+.dot {
+  fill: var(--on-accent);
+}
+
+/* Two little "confetti" dots around the circle. */
+.dotLarge,
+.dotSmall {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.dotLarge {
+  top: 4%;
+  right: -2%;
+  width: 14%;
+  height: 14%;
+  background: var(--chip);
+}
+
+.dotSmall {
+  bottom: 8%;
+  left: -4%;
+  width: 9%;
+  height: 9%;
+  background: var(--accent);
+  opacity: 0.35;
+}

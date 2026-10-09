@@ -36,7 +36,7 @@
   width: 32px;
   height: 32px;
   border: none;
-  border-radius: 6px;
+  border-radius: 50%;
   background: none;
   color: var(--text-secondary);
   display: flex;
@@ -81,21 +81,21 @@
 }
 
 .primary {
-  background: #2c6bed;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .primary:hover {
-  background: #1851b4;
+  background: var(--accent-hover);
 }
 
 .danger {
-  background: #d00b0b;
-  color: #ffffff;
+  background: var(--danger-button);
+  color: var(--on-accent);
 }
 
 .danger:hover {
-  background: #a30909;
+  background: var(--danger-button-hover);
 }
 
 .button:disabled {
@@ -116,5 +116,38 @@
 
   .card {
     max-height: calc(100vh - 24px);
+  }
+}
+
+/* Motion (D99): dialogs fade and grow in a little; buttons ease their hover and press. */
+@media (prefers-reduced-motion: no-preference) {
+  .dialog[open] {
+    animation: dialogIn 180ms ease-out;
+  }
+
+  .dialog[open]::backdrop {
+    animation: backdropIn 180ms ease-out;
+  }
+
+  .button,
+  .close {
+    transition: background-color 150ms ease-out, transform 150ms ease-out;
+  }
+
+  .button:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+}
+
+@keyframes dialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes backdropIn {
+  from {
+    opacity: 0;
   }
 }

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Search, SquarePen, X } from "lucide-react";
 import ConversationItem from "@/components/ConversationItem";
+import Illustration from "@/components/Illustration";
 import type { Conversation } from "@/types";
 import styles from "./ConversationList.module.css";
 
@@ -95,7 +96,24 @@ export default function ConversationList({
           />
         ))}
         {!loading && !error && visible.length === 0 && (
-          <p className={styles.empty}>{query ? `No results for "${query}"` : "No chats yet"}</p>
+          <div className={styles.empty}>
+            {q ? (
+              <>
+                <Illustration icon={Search} size={64} />
+                <p className={styles.emptyTitle}>No results for &ldquo;{query.trim()}&rdquo;</p>
+                <p>Try another name, or use New chat to find someone new.</p>
+              </>
+            ) : (
+              <>
+                <Illustration size={64} />
+                <p className={styles.emptyTitle}>No chats yet</p>
+                <p>Start a conversation and it&apos;ll show up here.</p>
+                <button type="button" className={styles.emptyButton} onClick={onNewChat}>
+                  Start a new chat
+                </button>
+              </>
+            )}
+          </div>
         )}
       </div>
     </section>

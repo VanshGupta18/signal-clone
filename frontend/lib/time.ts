@@ -43,3 +43,11 @@ export function formatLastSeen(iso: string, now: number): string {
 export function isSameDay(a: string, b: string): boolean {
   return startOfDay(new Date(a)) === startOfDay(new Date(b));
 }
+
+// "Good morning" before noon, "Good afternoon" until 6 PM, then "Good evening" (viewer's local time).
+export function greeting(date = new Date()): string {
+  const hour = date.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}

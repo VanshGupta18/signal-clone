@@ -5,7 +5,7 @@
   margin-bottom: 8px;
   padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 16px;
   background: var(--surface);
   font: inherit;
   color: var(--text);
@@ -14,7 +14,7 @@
 
 .search:focus {
   background: var(--bg);
-  border-color: #2c6bed;
+  border-color: var(--accent);
 }
 
 .list {
@@ -45,7 +45,7 @@
   width: 100%;
   padding: 8px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   background: none;
   font: inherit;
   font-weight: 500;
@@ -165,13 +165,15 @@
   height: 40px;
   padding: 0 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
   font: inherit;
   outline: none;
 }
 
 .input:focus {
-  border-color: #2c6bed;
+  border-color: var(--accent);
 }
 
 .groupHead {
@@ -305,4 +307,10 @@
   font: inherit;
   font-size: 12px;
   text-align: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .action {
+    transition: background-color 150ms ease-out;
+  }
 }

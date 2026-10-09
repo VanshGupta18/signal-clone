@@ -39,14 +39,17 @@ export default function MessageList({
   messages, myId, isGroup, typingUserIds, onRetry, onReply, onReact, onLoadOlder, hasOlder, loadingOlder,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
+  // Newest message id when the chat was opened. Only bubbles after it (just sent or received,
+  // id 0 = still sending) slide in; the history and older pages appear without animation.
+  const [openedAtId] = useState(() => Math.max(0, ...messages.map((m) => m.id)));
   const [highlightedId, setHighlightedId] = useState<number | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Clicking a quote scrolls to the original and pulses it. Only loaded messages can be
-  // found; older ones would need paging back to them (D97).
+  // found; older ones would need paging back to them.
   function jumpTo(id: number) {
     const element = document.getElementById(`message-${id}`);
-    if (!element) return toast("The original message isn't loaded. Scroll up to find it.");
+    if (!element) return toast("That message is further back. Scroll up to load it.");
     element.scrollIntoView({ block: "center", behavior: "smooth" });
     clearTimeout(highlightTimer.current);
     setHighlightedId(id);
@@ -55,10 +58,14 @@ export default function MessageList({
   const initialScroll = useRef(true);
   const previousHeight = useRef(0);
   const previousCount = useRef(-1);
+  const lastKey = useRef<string | undefined>(undefined); // newest message rendered so far
+  const atBottom = useRef(true); // was the reader at the bottom before this update?
 
-  // Start at the newest message (before paint, so there's no visible jump).
+  // Start at the newest message (before paint, so there's no visible jump). Later, a new message
+  // at the end scrolls into view if it's mine or the reader was already at the bottom.
   useLayoutEffect(() => {
     const element = scroller.current;
+    const last = messages.at(-1);
     if (!element) return;
     if (messages.length === previousCount.current) return;
     if (initialScroll.current) {
@@ -66,17 +73,22 @@ export default function MessageList({
       initialScroll.current = false;
     } else if (loadingOlder) {
       element.scrollTop += element.scrollHeight - previousHeight.current;
+    } else if (last && last.client_id !== lastKey.current && (atBottom.current || last.sender_id === myId)) {
+      element.scrollTop = element.scrollHeight;
     }
+    lastKey.current = last?.client_id;
     previousCount.current = messages.length;
     previousHeight.current = element.scrollHeight;
-  }, [messages, loadingOlder]);
+  }, [messages, loadingOlder, myId]);
 
   return (
     <div
       className={styles.scroller}
       ref={scroller}
       onScroll={(event) => {
-        previousHeight.current = event.currentTarget.scrollHeight;
+        const { scrollHeight, scrollTop, clientHeight } = event.currentTarget;
+        previousHeight.current = scrollHeight;
+        atBottom.current = scrollHeight - scrollTop - clientHeight < 80;
         if (event.currentTarget.scrollTop < 80 && hasOlder && !loadingOlder) onLoadOlder?.();
       }}
     >
@@ -98,6 +110,7 @@ export default function MessageList({
                 joinsPrev={!newDay && sameRun(prev, message)}
                 joinsNext={sameRun(message, next)}
                 highlighted={message.id === highlightedId}
+                animateIn={message.id === 0 || message.id > openedAtId}
                 onRetry={() => onRetry(message)}
                 onReply={() => onReply(message)}
                 onReact={(emoji) => onReact(message, emoji)}

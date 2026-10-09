@@ -10,7 +10,7 @@
   width: 100%;
   max-width: 840px;
   margin: auto auto 0; /* auto top margin: a short chat sits at the bottom, like Signal */
-  padding: 16px 16px 8px;
+  padding: 20px 24px 8px;
 }
 
 .day {
@@ -73,11 +73,17 @@
   width: fit-content;
   max-width: 100%;
   padding: 6px 12px;
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--bg-subtle);
   font-size: 12px;
   color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+@media (max-width: 700px) {
+  .list {
+    padding: 16px 12px 8px;
+  }
 }

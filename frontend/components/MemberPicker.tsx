@@ -60,7 +60,7 @@ export default function MemberPicker({ selected, onChange, excludeIds = [] }: Pr
           />
         ))}
         {visible.length === 0 && (
-          <p className={styles.empty}>{searching ? "No people found" : "No contacts to add. Search by name or number."}</p>
+          <p className={styles.empty}>{searching ? "No one found. Try another name or number." : "No contacts to add. Search by name or number."}</p>
         )}
       </div>
     </>

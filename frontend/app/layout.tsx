@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeSync } from "@/lib/theme";
@@ -17,7 +18,9 @@ const THEME_SCRIPT = `try{var t=localStorage.getItem("signal_theme");if(t==="lig
 // The inline script applies the saved theme while the HTML is parsed, before the first paint
 // (Next's "Preventing flash before hydration" guide). suppressHydrationWarning: the script
 // changes <html>'s data-theme before React hydrates, and that difference is expected.
-export default function RootLayout({ children }: LayoutProps<"/">) {
+// Explicit type instead of Next's generated global LayoutProps, so `tsc` passes on a fresh clone
+// before any `next dev`/`next build` has generated types.
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>

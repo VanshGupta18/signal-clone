@@ -2,7 +2,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .row:hover:has(.clickable) {
@@ -79,6 +79,12 @@
 }
 
 .checked {
-  border-color: #2c6bed;
-  background: #2c6bed;
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .clickable {
+    transition: background-color 150ms ease-out;
+  }
 }

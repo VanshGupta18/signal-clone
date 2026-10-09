@@ -6,7 +6,7 @@ import Dialog from "@/components/Dialog";
 import MemberPicker from "@/components/MemberPicker";
 import PersonRow from "@/components/PersonRow";
 import { toast } from "@/components/Toast";
-import { api } from "@/lib/api";
+import { api, friendlyError } from "@/lib/api";
 import { usePeople } from "@/lib/people";
 import type { Conversation, Person } from "@/types";
 import dialogStyles from "./Dialog.module.css";
@@ -35,7 +35,7 @@ export default function NewChatDialog({ onClose, onOpen }: Props) {
     try {
       await action();
     } catch (err) {
-      setError((err as Error).message);
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
@@ -210,7 +210,7 @@ export default function NewChatDialog({ onClose, onOpen }: Props) {
           <PersonRow key={p.id} person={p} subtitle={p.phone} onClick={() => !busy && openChat(p)} />
         ))}
         {people.length === 0 && (
-          <p className={styles.empty}>{searching ? "No people found" : "No contacts yet. Search by name or number."}</p>
+          <p className={styles.empty}>{searching ? "No one found. Try another name or number." : "No contacts yet. Search for a name or number to find someone."}</p>
         )}
       </div>
     </Dialog>

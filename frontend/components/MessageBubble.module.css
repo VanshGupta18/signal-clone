@@ -33,7 +33,7 @@
 
 .bubble {
   max-width: 100%;
-  padding: 7px 12px;
+  padding: 8px 12px;
   border-radius: 18px;
   line-height: 20px;
   overflow-wrap: anywhere;
@@ -46,8 +46,8 @@
 }
 
 .outgoing {
-  background: #2c6bed;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 /* Signal flattens the corners where bubbles of one run touch. */
@@ -87,7 +87,11 @@
 }
 
 .outgoing .meta {
-  color: rgba(255, 255, 255, 0.8);
+  color: color-mix(in srgb, var(--on-accent) 80%, transparent);
+}
+
+.tick {
+  display: inline-flex;
 }
 
 .read {
@@ -95,7 +99,7 @@
   height: 14px;
   border-radius: 7px;
   background: var(--bg);
-  color: #2c6bed;
+  color: var(--accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -108,7 +112,7 @@
   padding: 0;
   border: none;
   background: none;
-  color: #d92d2d;
+  color: var(--danger);
   display: flex;
   cursor: pointer;
 }
@@ -146,8 +150,8 @@
 }
 
 .outgoing .quote {
-  border-left-color: #ffffff;
-  background: rgba(255, 255, 255, 0.2);
+  border-left-color: var(--on-accent);
+  background: color-mix(in srgb, var(--on-accent) 20%, transparent);
 }
 
 .quoteName {
@@ -281,5 +285,50 @@
 @media (hover: none) {
   .actions {
     opacity: 0.6;
+  }
+}
+
+/* Motion (D99): only for things that change while the chat is open, never the history.
+   Short and ease-out; nothing moves when the OS asks for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .enter {
+    animation: enter 180ms ease-out;
+  }
+
+  .pop {
+    animation: pop 180ms ease-out;
+  }
+
+  .tickChanged {
+    animation: fade 150ms ease-out;
+  }
+
+  .pill,
+  .action,
+  .pickerEmoji {
+    transition: background-color 150ms ease-out;
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  70% {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
   }
 }

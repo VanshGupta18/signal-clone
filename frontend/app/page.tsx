@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
-import { MessageCircle } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import ChatHeader from "@/components/ChatHeader";
 import ComingSoon from "@/components/ComingSoon";
 import ConversationList from "@/components/ConversationList";
 import DemoGuide from "@/components/DemoGuide";
 import GroupDetails from "@/components/GroupDetails";
+import Illustration from "@/components/Illustration";
 import MessageComposer from "@/components/MessageComposer";
 import MessageList, { EncryptionNotice } from "@/components/MessageList";
 import NavRail, { type Tab } from "@/components/NavRail";
@@ -21,8 +21,10 @@ import Toaster, { toast } from "@/components/Toast";
 import { api, clearToken, getToken } from "@/lib/api";
 import { showNotification } from "@/lib/notifications";
 import { useShortcuts } from "@/lib/shortcuts";
+import { greeting } from "@/lib/time";
 import { connect, disconnect, sendEvent, sendMessage, subscribe } from "@/lib/socket";
 import type { Conversation, Message, MessagePage, ServerEvent, User } from "@/types";
+import dialogStyles from "@/components/Dialog.module.css";
 import styles from "./page.module.css";
 
 const TYPING_TIMEOUT_MS = 6000; // hide a typing indicator if no refresh arrives (senders refresh every 3s)
@@ -95,7 +97,7 @@ export default function Home() {
     }
     Promise.allSettled([api<User>("/api/me"), loadList()]).then(([userResult, listResult]) => {
       if (userResult.status === "rejected") {
-        setError(userResult.reason instanceof Error ? userResult.reason.message : "Couldn't load your account");
+        setError(userResult.reason instanceof Error ? userResult.reason.message : "Couldn't load your account. Try refreshing the page.");
         return;
       }
       setMe(userResult.value);
@@ -103,7 +105,7 @@ export default function Home() {
         setConversations(listResult.value);
         setConversationError("");
       } else {
-        setConversationError("Couldn't load conversations.");
+        setConversationError("Couldn't load your chats.");
       }
     }).finally(() => setLoadingConversations(false));
   }, [router]);
@@ -119,7 +121,7 @@ export default function Home() {
         setHasOlder(page.has_more);
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setMessageError(`Couldn't load messages: ${err.message}`);
+        if (err.name !== "AbortError") setMessageError("Couldn't load messages. Try again?");
       })
       .finally(() => setLoadingMessages(false));
     markRead(openId);
@@ -139,7 +141,7 @@ export default function Home() {
         setHistoryCursor(page.next_before_id);
         setHasOlder(page.has_more);
       })
-      .catch((err: Error) => setMessageError(`Couldn't load messages: ${err.message}`))
+      .catch(() => setMessageError("Couldn't load messages. Try again?"))
       .finally(() => setLoadingMessages(false));
   }
 
@@ -151,8 +153,8 @@ export default function Home() {
       setMessages((current) => [...page.messages, ...current]);
       setHistoryCursor(page.next_before_id);
       setHasOlder(page.has_more);
-    } catch (err) {
-      toast(`Couldn't load older messages: ${err instanceof Error ? err.message : "request failed"}`);
+    } catch {
+      toast("Couldn't load older messages. Scroll up to try again.");
     } finally {
       setLoadingOlder(false);
     }
@@ -192,9 +194,9 @@ export default function Home() {
       if (event.actor_id === myId) return;
       const name = knownName ?? list.find((c) => c.id === event.conversation_id)?.name ?? "a group";
       if (event.removed_user_id === myId) toast(`You were removed from ${name}`);
-      else if (event.added_user_ids?.includes(myId!)) toast(`You were added to ${name}`);
+      else if (event.added_user_ids?.includes(myId!)) toast(`You've been added to ${name}`);
       else if (event.removed_user_id === event.actor_id) toast(`Someone left ${name}`);
-      else toast(`Members updated in ${name}`);
+      else toast(`${name} has updated members`);
     }
     const reloadList = (): Promise<Conversation[]> => {
       listRefreshQueued.current = true;
@@ -234,12 +236,12 @@ export default function Home() {
           break;
         case "socket:close":
           setConnectionStatus("offline");
-          if (!offline.current) toast("Connection lost. Reconnecting…");
+          if (!offline.current) toast("You're offline. Reconnecting…");
           offline.current = true;
           break;
         case "socket:open":
           setConnectionStatus("connected");
-          if (offline.current) toast("Connected");
+          if (offline.current) toast("You're back online");
           offline.current = false;
           // (Re)connected: reload everything we may have missed, then tell the server our
           // client now has every message up to the newest one it loaded (offline catch-up).
@@ -336,7 +338,7 @@ export default function Home() {
         case "error":
           if (!event.client_id) return console.warn("WebSocket error:", event.detail);
           setPending((list) => list.map((m) => (m.client_id === event.client_id ? { ...m, status: "failed" } : m)));
-          toast(`Message not sent: ${event.detail}`);
+          toast(`Couldn't send: ${event.detail}. Click the red ! to try again.`);
           break;
       }
     });
@@ -522,7 +524,11 @@ export default function Home() {
                     />
                     <h2>{selected.name}</h2>
                     {selected.type === "group" && <p>{selected.member_count} {selected.member_count === 1 ? "member" : "members"}</p>}
-                    <p className={styles.introHint}>No messages yet. Say hi!</p>
+                    <p className={styles.introHint}>
+                      {selected.type === "group"
+                        ? `This is the start of ${selected.name}. Say hi to everyone!`
+                        : `This is the start of your chat with ${selected.name.split(" ")[0]}. Say hi!`}
+                    </p>
                     <EncryptionNotice />
                   </div>
                 ) : (
@@ -549,12 +555,20 @@ export default function Home() {
                 />
               </>
             ) : (
+              // No chat open: a friendly hello instead of a blank pane.
               <div className={styles.empty}>
-                <div className={styles.emptyIcon}>
-                  <MessageCircle size={40} />
-                </div>
-                <h2>Welcome to Signal</h2>
-                <p>Select a chat to start messaging.</p>
+                <Illustration size={120} />
+                <h2>
+                  {greeting()}, {me.display_name.split(" ")[0]} <span aria-hidden="true">👋</span>
+                </h2>
+                <p>Welcome to Signal. Pick a chat to catch up, or start a new conversation.</p>
+                <button
+                  type="button"
+                  className={`${dialogStyles.button} ${dialogStyles.primary} ${styles.emptyButton}`}
+                  onClick={() => setShowNewChat(true)}
+                >
+                  Start a chat
+                </button>
               </div>
             )}
           </main>

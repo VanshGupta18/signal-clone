@@ -15,7 +15,7 @@ The backend runs on Render's free tier, which sleeps after about 15 minutes with
 
 ## Demo accounts
 
-Sign in with any of these numbers. The verification code is always **`123456`** (mock, no SMS is sent). The login page has a **Demo accounts** dropdown that fills in the number, and the code is pre-filled for these accounts, so a demo login is: pick, Next, Continue. Any other valid number creates a new account and asks for a name and optional photo.
+The login page lists these accounts under **Try a demo account**: **one click on a demo card logs you straight in** (it uses the normal login endpoints with the mock code). You can also type any of these numbers; the verification code is always **`123456`** (mock, no SMS is sent) and is pre-filled for demo numbers. Any other valid number creates a new account, asks for a name and optional photo, and ends on a short "You're all set" screen.
 
 | Phone | Name | What it shows |
 |---|---|---|
@@ -56,6 +56,7 @@ Alice, Bob, Carol and Dave all have each other as contacts. To try real-time fea
 
 **Signal experience**
 - Signal Desktop layout: nav rail, conversation list, chat pane; Signal's colors, bubbles and ticks.
+- Welcoming touches in Signal's style: a "Good morning, Alice 👋" pane with a "Start a chat" button when no chat is open, a "You're all set" step for new users, small illustrated empty states (no chats yet, no search results, Calls/Stories), friendly error and toast wording, and short, subtle animations for new messages, reactions, ticks, toasts and dialogs (turned off when the OS asks for reduced motion).
 - Native modal dialogs (New chat, New group, Add members, Group info, Safety number), toasts for events and errors.
 - Settings: working Profile (name and photo), Appearance (Light / Dark / System theme) and Desktop notifications; placeholder Privacy / Linked devices sections and notification sound; Log out.
 - Add contact: New chat → "Add contact" searches people by name or number who aren't contacts yet and adds them.
@@ -413,13 +414,13 @@ signal-clone/
 │   └── requirements.txt
 └── frontend/
     ├── app/
-    │   ├── login/page.tsx      phone → code → profile onboarding
+    │   ├── login/page.tsx      demo cards (one-click login), phone → code → profile → all set
     │   ├── page.tsx            main screen: data loading, socket events, chat state
     │   └── layout.tsx, globals.css
     ├── components/             NavRail, ConversationList/Item, ChatHeader, MessageList,
     │                           MessageBubble, MessageComposer, Avatar, Dialog, NewChatDialog,
     │                           MemberPicker, PersonRow, GroupDetails, SafetyNumberDialog,
-    │                           Settings, ShortcutsDialog, ComingSoon, Toast
+    │                           Settings, ShortcutsDialog, ComingSoon, Toast, Illustration
     ├── lib/
     │   ├── api.ts              fetch wrapper, token storage, 401 → login
     │   ├── socket.ts           WebSocket client: reconnect, outbox, listeners

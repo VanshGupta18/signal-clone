@@ -107,7 +107,7 @@ export default function MessageComposer({ conversationId, onSend, myId, replyTo,
       <div className={styles.quoteBar} role="group" aria-label={`Replying to ${replyTo.sender_id === myId ? "yourself" : replyTo.sender_name}`}>
         <div
           className={styles.quote}
-          style={{ borderLeftColor: replyTo.sender_id === myId ? "#2c6bed" : avatarTextColor(replyTo.sender_id) }}
+          style={{ borderLeftColor: replyTo.sender_id === myId ? "var(--accent)" : avatarTextColor(replyTo.sender_id) }}
         >
           <span className={styles.quoteName}>{replyTo.sender_id === myId ? "You" : replyTo.sender_name}</span>
           <span className={styles.quoteText}>{replyTo.content}</span>

@@ -7,7 +7,7 @@ import Dialog, { ConfirmDialog } from "@/components/Dialog";
 import MemberPicker from "@/components/MemberPicker";
 import PersonRow from "@/components/PersonRow";
 import { toast } from "@/components/Toast";
-import { api } from "@/lib/api";
+import { api, friendlyError } from "@/lib/api";
 import type { Conversation, Member, Person } from "@/types";
 import dialogStyles from "./Dialog.module.css";
 import styles from "./People.module.css";
@@ -50,7 +50,7 @@ export default function GroupDetails({ conversation, myId, version, onClose, onL
     try {
       await action();
     } catch (err) {
-      setError((err as Error).message);
+      setError(friendlyError(err));
     } finally {
       setMutating(false);
       setConfirm(null); // the confirm dialog stays open (showing "Working…") until the request ends

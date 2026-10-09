@@ -23,6 +23,7 @@ type Props = {
   joinsPrev: boolean; // previous bubble is from the same sender (same run)
   joinsNext: boolean;
   highlighted: boolean; // just jumped to from a quote
+  animateIn: boolean; // new since the chat was opened (not history)
   onRetry: () => void; // only used for a failed send
   onReply: () => void;
   onReact: (emoji: string) => void; // the server toggles it off if it's already my reaction
@@ -30,8 +31,14 @@ type Props = {
 };
 
 export default function MessageBubble({
-  message, myId, isGroup, joinsPrev, joinsNext, highlighted, onRetry, onReply, onReact, onJumpToQuote,
+  message, myId, isGroup, joinsPrev, joinsNext, highlighted, animateIn, onRetry, onReply, onReact, onJumpToQuote,
 }: Props) {
+  // What the bubble looked like when it appeared: only later changes animate (a reaction
+  // pill that's added pops in, a tick that changes fades in), never the initial render.
+  const [initial] = useState(() => ({
+    status: message.status,
+    emojis: new Set(message.reactions.map((r) => r.emoji)),
+  }));
   const isOwn = message.sender_id === myId;
   // In groups, incoming runs get the sender's name on top and their avatar at the bottom.
   const showGroupChrome = isGroup && !isOwn;
@@ -51,7 +58,7 @@ export default function MessageBubble({
   return (
     <div
       id={saved ? `message-${message.id}` : undefined}
-      className={`${styles.row} ${isOwn ? styles.rowOut : ""} ${joinsNext && message.reactions.length === 0 ? styles.tight : ""}`}
+      className={`${styles.row} ${isOwn ? styles.rowOut : ""} ${joinsNext && message.reactions.length === 0 ? styles.tight : ""} ${animateIn ? styles.enter : ""}`}
     >
       {showGroupChrome && (
         <div className={styles.avatarSlot}>
@@ -61,7 +68,7 @@ export default function MessageBubble({
         </div>
       )}
       {failed && (
-        <button type="button" className={styles.retry} onClick={onRetry} title="Not sent. Click to retry." aria-label="Retry sending">
+        <button type="button" className={styles.retry} onClick={onRetry} title="Couldn't send. Click to try again." aria-label="Retry sending">
           <CircleAlert size={20} />
         </button>
       )}
@@ -87,7 +94,12 @@ export default function MessageBubble({
           <span className={styles.content}>{message.content}</span>
           <span className={styles.meta}>
             {failed ? "Not sent" : formatTime(message.created_at)}
-            {isOwn && message.status && <StatusIcon status={message.status} />}
+            {isOwn && message.status && (
+              // key: a new status remounts the icon, so it fades in
+              <span key={message.status} className={`${styles.tick} ${message.status !== initial.status ? styles.tickChanged : ""}`}>
+                <StatusIcon status={message.status} />
+              </span>
+            )}
           </span>
         </div>
         {message.reactions.length > 0 && (
@@ -99,7 +111,7 @@ export default function MessageBubble({
                 <button
                   key={reaction.emoji}
                   type="button"
-                  className={`${styles.pill} ${mine ? styles.pillMine : ""}`}
+                  className={`${styles.pill} ${mine ? styles.pillMine : ""} ${initial.emojis.has(reaction.emoji) ? "" : styles.pop}`}
                   title={names}
                   aria-pressed={mine}
                   aria-label={`${reactionLabel(reaction.emoji)} ${reaction.user_ids.length}: ${names}${mine ? ". Click to remove your reaction" : ""}`}

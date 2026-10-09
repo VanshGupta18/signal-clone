@@ -80,3 +80,15 @@ function errorMessage(body: { detail?: unknown } | null): string | null {
   }
   return null;
 }
+
+// Kinder wording for errors the browser or our wrapper produce (no connection, timeouts, 5xx).
+// The backend's own `detail` messages are already written for people, so they pass through.
+export function friendlyError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  // Chrome "Failed to fetch", Safari "Load failed", Firefox "NetworkError…", our GET timeout.
+  if (/failed to fetch|load failed|networkerror|timed out/i.test(message)) {
+    return "Can't reach Signal right now. The server may be waking up, so try again in a moment.";
+  }
+  if (!message || /^Request failed \(5\d\d\)$/.test(message)) return "Something went wrong on our side. Please try again.";
+  return message;
+}

@@ -1,5 +1,6 @@
 .page {
   min-height: 100vh;
+  padding: 32px 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7,7 +8,8 @@
 }
 
 .card {
-  width: 360px;
+  width: 380px;
+  max-width: 100%;
   text-align: center;
 }
 
@@ -23,20 +25,20 @@
   height: 64px;
   margin: 0 auto 24px;
   border-radius: 50%;
-  background: #2c6bed;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--on-accent);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .title {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 600;
 }
 
 .subtitle {
-  margin-bottom: 12px;
+  margin: 6px 0 12px;
   color: var(--text-secondary);
   line-height: 20px;
 }
@@ -50,14 +52,16 @@
   height: 40px;
   padding: 0 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
   font: inherit;
   outline: none;
 }
 
 .input:focus {
-  border-color: #2c6bed;
-  box-shadow: 0 0 0 1px #2c6bed;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .button {
@@ -65,15 +69,15 @@
   margin-top: 8px;
   border: none;
   border-radius: 18px;
-  background: #2c6bed;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--on-accent);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
 }
 
 .button:hover:not(:disabled) {
-  background: #1851b4;
+  background: var(--accent-hover);
 }
 
 .button:disabled {
@@ -84,7 +88,7 @@
 .link {
   border: none;
   background: none;
-  color: #2c6bed;
+  color: var(--accent);
   font: inherit;
   cursor: pointer;
 }
@@ -118,19 +122,130 @@
   justify-content: center;
 }
 
-.demoSelect {
-  height: 36px;
-  padding: 0 8px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 6px;
-  background: var(--bg-subtle);
-  color: var(--text-secondary);
-  font: inherit;
+/* "Try a demo account": Signal-style contact rows, one click logs in. */
+.sectionLabel {
+  margin: 20px 0 8px;
   font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.demoList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.demoCard {
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   cursor: pointer;
 }
 
-.demoSelect:focus-visible {
-  outline: 2px solid #2c6bed;
-  outline-offset: 1px;
+.demoCard:hover:not(:disabled) {
+  background: var(--bg-subtle);
+}
+
+.demoCard:disabled {
+  cursor: default;
+}
+
+.demoCard:disabled:not([aria-busy="true"]) {
+  opacity: 0.55;
+}
+
+.demoText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.demoName {
+  font-weight: 600;
+}
+
+.demoNote {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* A line with "or use your phone number" in the middle. */
+.divider {
+  margin: 20px 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+/* "You're all set" after a new user's profile. */
+.done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.done .button {
+  align-self: stretch;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .demoCard,
+  .button {
+    transition: background-color 150ms ease-out, transform 150ms ease-out;
+  }
+
+  .button:active:not(:disabled),
+  .demoCard:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .done {
+    animation: rise 200ms ease-out;
+  }
+
+  .spinner {
+    animation: spin 0.8s linear infinite;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
