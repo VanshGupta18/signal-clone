@@ -1,0 +1,12 @@
+backend/.venv/
+__pycache__/
+*.db
+*.db-wal
+*.db-shm
+.pytest_cache/
+.env
+.DS_Store
+.claude/
+pytest.ini
+PROGRESS.md
+Scaler_SDE_Fullstack_Assignment_-_Signal_Clone.md
