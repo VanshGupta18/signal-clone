@@ -15,6 +15,14 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+// Session is invalid or was logged out elsewhere (REST 401 / WebSocket 4401): start over.
+export function expireSession() {
+  clearToken();
+  // Full reload on purpose: wipes all in-memory state of the old session. Not a component, so no router.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+  window.location.href = "/login";
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   const token = getToken();
@@ -24,11 +32,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { ...init, headers });
 
   if (res.status === 401) {
-    // Session is invalid or was logged out elsewhere: start over.
-    clearToken();
-    // Full reload on purpose: wipes all in-memory state of the old session. api() isn't a component, so no router.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.href = "/login";
+    expireSession();
     throw new Error("Session expired");
   }
   if (!res.ok) {

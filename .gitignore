@@ -8,6 +8,4 @@ __pycache__/
 .DS_Store
 .claude/
 pytest.ini
-PROGRESS.md
-DECISIONS.md
-Scaler_SDE_Fullstack_Assignment_-_Signal_Clone.md
+docs/

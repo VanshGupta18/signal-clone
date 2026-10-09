@@ -1,3 +1,4 @@
+import anyio
 import pytest
 from fastapi.testclient import TestClient
 
@@ -17,7 +18,12 @@ def db(tmp_path, monkeypatch):
 @pytest.fixture
 def client(db):
     # No `with`: entering would run the app's startup and open a second connection.
-    yield TestClient(app)
+    client = TestClient(app)
+    # One event loop for all requests and sockets, like the real server, so one socket's
+    # handler can push to another socket (by default each socket gets its own loop).
+    with anyio.from_thread.start_blocking_portal() as portal:
+        client.portal = portal
+        yield client
 
 
 def login(client, phone="+15551234567"):

@@ -1,3 +1,5 @@
+import logging
+import re
 from contextlib import asynccontextmanager
 
 import turso
@@ -6,7 +8,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import close_db, get_db, init_db
 from app import websocket
-from app.routers import auth, users
+from app.routers import auth, conversations, users
+
+
+class RedactTokens(logging.Filter):
+    """uvicorn logs every WebSocket handshake ("WebSocket /ws?token=... [accepted]") even
+    with --no-access-log. Rewrite those lines so session tokens never reach the logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if "token=" in message:
+            record.msg, record.args = re.sub(r"token=[^&\s\"]+", "token=[redacted]", message), ()
+        return True
+
+
+logging.getLogger("uvicorn.error").addFilter(RedactTokens())
 
 
 @asynccontextmanager
@@ -29,6 +45,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(conversations.router)
 app.include_router(websocket.router)
 
 

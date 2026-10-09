@@ -1,0 +1,46 @@
+.app {
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+.chat {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #5e5e5e;
+}
+
+.empty h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1b1b1b;
+}
+
+.emptyIcon {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 12px;
+  border-radius: 50%;
+  background: #2c6bed;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.error {
+  padding: 24px;
+  color: #d00b0b;
+}

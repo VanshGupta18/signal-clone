@@ -21,9 +21,12 @@ def test_ws_rejects_logged_out_token(client):
     assert exc.value.code == 4401
 
 
-def test_ws_identity_comes_from_token(client):
-    res = login(client)
-    with client.websocket_connect(f"/ws?token={res['token']}") as ws:
-        ws.send_json({"hello": "world", "user_id": 999})  # client-claimed id is ignored
-        reply = ws.receive_json()
-    assert reply == {"type": "echo", "user_id": res["user"]["id"], "data": {"hello": "world", "user_id": 999}}
+def test_ws_bad_events_get_error_and_socket_stays_open(client):
+    token = login(client)["token"]
+    with client.websocket_connect(f"/ws?token={token}") as ws:
+        ws.send_text("not json")
+        assert ws.receive_json()["type"] == "error"
+        ws.send_json({"type": "nope", "client_id": "c1"})
+        assert ws.receive_json() == {"type": "error", "client_id": "c1", "detail": "Unknown event type"}
+        ws.send_json({"type": "message:send", "client_id": "c2"})  # missing fields
+        assert ws.receive_json()["client_id"] == "c2"

@@ -14,6 +14,11 @@ const COLORS = [
   ["#eae6d5", "#7d6f40"],
 ];
 
+// Text color for a seed, e.g. to color a sender's name in a group like Signal does.
+export function avatarTextColor(colorSeed: number): string {
+  return COLORS[Math.abs(colorSeed) % COLORS.length][1];
+}
+
 type Props = {
   name: string;
   src?: string | null;
