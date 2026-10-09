@@ -9,4 +9,5 @@ __pycache__/
 .claude/
 pytest.ini
 PROGRESS.md
+DECISIONS.md
 Scaler_SDE_Fullstack_Assignment_-_Signal_Clone.md

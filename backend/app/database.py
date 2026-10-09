@@ -7,8 +7,10 @@ import turso.sync
 
 DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "signal.db"))
 # Set both in production to sync the database to Turso Cloud; unset locally = plain SQLite file.
-TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL")
-TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
+# .strip(): a value pasted into a dashboard often carries a trailing newline, which is
+# invalid inside an HTTP header and makes every Turso request fail.
+TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL", "").strip()
+TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
 
 # Timestamps are ISO-8601 UTC with a trailing Z so browsers parse them as UTC.
 SCHEMA = """
