@@ -87,6 +87,34 @@
   color: #848484;
 }
 
+.loadingRow {
+  height: 64px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e7e7e7 37%, #f0f0f0 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+.errorState {
+  margin: 12px 2px;
+  padding: 14px 10px;
+  border-radius: 8px;
+  background: #fff4f4;
+  color: #a30909;
+  text-align: center;
+}
+
+.errorState button {
+  margin-top: 10px;
+  border: 0;
+  border-radius: 16px;
+  padding: 7px 14px;
+  color: #fff;
+  background: #2c6bed;
+  cursor: pointer;
+}
+
 .clearButton {
   position: absolute;
   right: 6px;
@@ -106,4 +134,18 @@
 
 .clearButton:hover {
   background: #848484;
+}
+
+@keyframes shimmer {
+  to { background-position: -400% 0; }
+}
+
+@media (max-width: 700px) {
+  .pane {
+    flex: 1;
+  }
+
+  .mobileHidden {
+    display: none;
+  }
 }

@@ -1,10 +1,14 @@
 import turso
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from app import database
 
 
 def test_health(client):
     assert client.get("/api/health").json() == {"status": "ok"}
+    assert client.get("/api/health/live").json() == {"status": "ok"}
+    assert client.get("/api/health/ready").json() == {"status": "ok"}
 
 
 def test_foreign_keys_enforced(db):
@@ -27,3 +31,12 @@ def test_duplicate_direct_key_rejected(db):
     db.execute(insert)
     with pytest.raises(turso.IntegrityError):
         db.execute(insert)
+
+
+def test_concurrent_readers_share_the_database_safely(db):
+    def read_one():
+        with database.db() as conn:
+            return conn.execute("SELECT 1").fetchone()[0]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        assert list(pool.map(lambda _: read_one(), range(32))) == [1] * 32

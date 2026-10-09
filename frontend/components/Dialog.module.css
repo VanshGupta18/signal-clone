@@ -107,3 +107,14 @@
   color: #5e5e5e;
   line-height: 1.4;
 }
+
+@media (max-width: 700px) {
+  .dialog {
+    width: calc(100vw - 24px) !important;
+    max-height: calc(100vh - 24px);
+  }
+
+  .card {
+    max-height: calc(100vh - 24px);
+  }
+}

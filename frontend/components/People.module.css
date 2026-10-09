@@ -60,6 +60,12 @@
   background: #f0f0f0;
 }
 
+.action:disabled,
+.iconButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .actionIcon {
   width: 36px;
   height: 36px;
@@ -181,6 +187,65 @@
   font-weight: 600;
   text-align: center;
   overflow-wrap: anywhere;
+}
+
+.skeleton {
+  min-height: 240px;
+}
+
+.skeletonSection,
+.skeletonAvatar,
+.skeletonName,
+.skeletonPhone {
+  background: linear-gradient(90deg, #eeeeee 25%, #e5e5e5 37%, #eeeeee 63%);
+  background-size: 400% 100%;
+  animation: skeletonShimmer 1.4s ease infinite;
+}
+
+.skeletonSection {
+  width: 64px;
+  height: 14px;
+  margin: 12px 8px 8px;
+  border-radius: 4px;
+}
+
+.skeletonRow {
+  height: 56px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.skeletonAvatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.skeletonText {
+  flex: 1;
+}
+
+.skeletonName,
+.skeletonPhone {
+  height: 10px;
+  border-radius: 4px;
+}
+
+.skeletonName {
+  width: 46%;
+  margin-bottom: 8px;
+}
+
+.skeletonPhone {
+  width: 30%;
+}
+
+@keyframes skeletonShimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
 }
 
 .muted {

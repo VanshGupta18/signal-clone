@@ -42,7 +42,7 @@ export default function Dialog({ title, onClose, children, footer, width = 360 }
       <div className={styles.card}>
         <header className={styles.header}>
           <h2 className={styles.title}>{title}</h2>
-          <button className={styles.close} onClick={onClose} aria-label="Close" title="Close">
+          <button type="button" className={styles.close} onClick={onClose} aria-label="Close" title="Close">
             <X size={20} />
           </button>
         </header>
@@ -59,21 +59,22 @@ type ConfirmProps = {
   confirmLabel: string;
   onConfirm: () => void;
   onClose: () => void;
+  disabled?: boolean;
 };
 
 // "Are you sure?" for destructive actions (remove member, leave group).
-export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onClose }: ConfirmProps) {
+export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onClose, disabled = false }: ConfirmProps) {
   return (
     <Dialog
       title={title}
       onClose={onClose}
       footer={
         <>
-          <button className={styles.button} onClick={onClose}>
+          <button type="button" className={styles.button} onClick={onClose}>
             Cancel
           </button>
-          <button className={`${styles.button} ${styles.danger}`} onClick={onConfirm} data-autofocus>
-            {confirmLabel}
+          <button type="button" className={`${styles.button} ${styles.danger}`} onClick={onConfirm} data-autofocus disabled={disabled}>
+            {disabled ? "Working…" : confirmLabel}
           </button>
         </>
       }

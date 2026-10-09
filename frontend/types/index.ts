@@ -56,6 +56,11 @@ export type Message = {
   created_at: string;
   status: MessageStatus | null; // only set on my own messages
 };
+export type MessagePage = {
+  messages: Message[];
+  has_more: boolean;
+  next_before_id: number | null;
+};
 
 // WebSocket: client -> server
 export type SendPayload = { conversation_id: number; content: string; client_id: string };
@@ -63,10 +68,10 @@ export type ClientEvent =
   | { type: "message:delivered"; message_ids?: number[]; up_to_id?: number }
   | { type: "conversation:read" | "typing:start" | "typing:stop"; conversation_id: number };
 
-// WebSocket: server -> client. "socket:open"/"socket:close" are local: lib/socket.ts emits them
+// WebSocket: server -> client. Socket lifecycle events are local: lib/socket.ts emits them.
 // on every (re)connect / drop.
 export type ServerEvent =
-  | { type: "socket:open" | "socket:close" }
+  | { type: "socket:connecting" | "socket:open" | "socket:close" }
   | { type: "message:ack"; client_id: string; message: Message }
   | { type: "message:new"; message: Message }
   // Recomputed ticks of my messages (lowest status across recipients, computed by the server).

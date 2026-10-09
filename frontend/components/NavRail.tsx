@@ -42,7 +42,7 @@ export default function NavRail({ me, tab, onTab, onLogout }: Props) {
         <button {...tabProps("settings", "Settings")}>
           <Settings size={20} />
         </button>
-        <button className={styles.me} title={me.display_name} onClick={() => setMenuOpen(!menuOpen)}>
+        <button className={styles.me} title={me.display_name} aria-label={`Account menu for ${me.display_name}`} onClick={() => setMenuOpen(!menuOpen)}>
           <Avatar name={me.display_name} src={me.avatar_url} colorSeed={me.id} size={28} />
         </button>
         {menuOpen && (

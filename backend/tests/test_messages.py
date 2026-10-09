@@ -102,3 +102,51 @@ def test_list_reflects_sent_message(client, seeded):
     bob = login(client, BOB)
     bob_convs = client.get("/api/conversations", headers=auth_header(bob["token"])).json()
     assert next(c for c in bob_convs if c["id"] == direct)["unread_count"] == 1
+
+
+def test_message_history_supports_cursor_pages(client, seeded):
+    alice = login(client, ALICE)
+    direct = conversation_id(client, alice["token"], "Bob Smith")
+    headers = auth_header(alice["token"])
+    with client.websocket_connect(f"/ws?token={alice['token']}") as ws:
+        for index in range(3):
+            send(ws, direct, f"page-{index}", f"page-{index}")
+
+    page = client.get(f"/api/conversations/{direct}/messages?limit=2", headers=headers).json()
+    assert page["has_more"] is True
+    assert [message["content"] for message in page["messages"]] == ["page-1", "page-2"]
+    older = client.get(
+        f"/api/conversations/{direct}/messages?limit=2&before_id={page['next_before_id']}",
+        headers=headers,
+    ).json()
+    assert older["messages"][-1]["content"] == "page-0"
+    assert older["has_more"] is True
+
+
+def test_ws_send_acks_before_turso_push_rest_writes_push_first(client, seeded, monkeypatch):
+    """D84: chat events are acked right after the local commit, then synced; REST writes sync first."""
+    import threading
+    import time
+
+    from app import database
+
+    pushes = []
+    real_push = database._push
+    monkeypatch.setattr(database, "_push", lambda: (pushes.append("rest"), real_push()))
+    alice = login(client, ALICE)  # REST write (new session row): pushed before the response
+    assert pushes == ["rest"]
+    direct = conversation_id(client, alice["token"], "Bob Smith")
+
+    # A "slow Turso": the push blocks until the test has received the ack. If the ack waited
+    # for the push, it could only arrive after the 3s timeout.
+    acked = threading.Event()
+    monkeypatch.setattr(database, "_push", lambda: (acked.wait(3), pushes.append("ws"), real_push()))
+    with client.websocket_connect(f"/ws?token={alice['token']}") as ws:
+        started = time.perf_counter()
+        reply = send(ws, direct, "fast ack", "c-fast")
+        elapsed = time.perf_counter() - started
+        acked.set()
+        ws.send_json({"type": "typing:start", "conversation_id": direct})  # no write: no push
+    assert reply["type"] == "message:ack"
+    assert elapsed < 1, f"ack waited for the Turso push ({elapsed:.1f}s)"
+    assert pushes == ["rest", "ws"] and database._unpushed is False

@@ -17,7 +17,7 @@ import Settings from "@/components/Settings";
 import Toaster, { toast } from "@/components/Toast";
 import { api, clearToken, getToken } from "@/lib/api";
 import { connect, disconnect, sendEvent, sendMessage, subscribe } from "@/lib/socket";
-import type { Conversation, Message, ServerEvent, User } from "@/types";
+import type { Conversation, Message, MessagePage, ServerEvent, User } from "@/types";
 import styles from "./page.module.css";
 
 const TYPING_TIMEOUT_MS = 6000; // hide a typing indicator if no refresh arrives (senders refresh every 3s)
@@ -26,7 +26,8 @@ type Typing = { conversation_id: number; user_id: number };
 
 // Preview, order, unread counts and presence stay server-derived: we just reload the list.
 const loadList = () => api<Conversation[]>("/api/conversations");
-const loadMessages = (id: number) => api<Message[]>(`/api/conversations/${id}/messages`);
+const loadMessages = (id: number, beforeId?: number, signal?: AbortSignal) =>
+  api<MessagePage>(`/api/conversations/${id}/messages?limit=50${beforeId ? `&before_id=${beforeId}` : ""}`, { signal });
 
 // Read = I'm actually looking at it: the chat is open and the tab is visible.
 function markRead(conversationId: number) {
@@ -37,18 +38,28 @@ export default function Home() {
   const router = useRouter();
   const [me, setMe] = useState<User | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [conversationError, setConversationError] = useState("");
   const [tab, setTab] = useState<Tab>("chats");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   // The chat actually on screen. While Settings/Calls/Stories is shown nothing is open, so
   // nothing gets marked read; the selection comes back with the Chats tab.
   const openId = tab === "chats" ? selectedId : null;
   const [messages, setMessages] = useState<Message[]>([]); // server history of the open chat
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [messageError, setMessageError] = useState("");
+  const [historyCursor, setHistoryCursor] = useState<number | null>(null);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   // My messages not yet acked by the server ("sending"/"failed"), across all chats,
   // so switching chats doesn't lose them.
   const [pending, setPending] = useState<Message[]>([]);
   const [error, setError] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "offline">("connecting");
   const [typing, setTyping] = useState<Typing[]>([]); // who is typing where (others only)
   const typingTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const listRefreshRef = useRef<Promise<Conversation[]> | null>(null);
+  const listRefreshQueued = useRef(false);
   const [showNewChat, setShowNewChat] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [showSafety, setShowSafety] = useState(false);
@@ -66,26 +77,70 @@ export default function Home() {
       router.replace("/login");
       return;
     }
-    Promise.all([api<User>("/api/me"), loadList()])
-      .then(([user, list]) => {
-        setMe(user);
-        setConversations(list);
-      })
-      .catch((err: Error) => setError(err.message));
+    Promise.allSettled([api<User>("/api/me"), loadList()]).then(([userResult, listResult]) => {
+      if (userResult.status === "rejected") {
+        setError(userResult.reason instanceof Error ? userResult.reason.message : "Couldn't load your account");
+        return;
+      }
+      setMe(userResult.value);
+      if (listResult.status === "fulfilled") {
+        setConversations(listResult.value);
+        setConversationError("");
+      } else {
+        setConversationError("Couldn't load conversations.");
+      }
+    }).finally(() => setLoadingConversations(false));
   }, [router]);
 
   // Load history whenever a different chat is opened, and mark it read.
   useEffect(() => {
     if (openId === null) return;
-    let stale = false; // ignore a slow response if the user already clicked another chat
-    loadMessages(openId)
-      .then((list) => !stale && setMessages(list))
-      .catch((err: Error) => !stale && setError(err.message));
+    const controller = new AbortController();
+    loadMessages(openId, undefined, controller.signal)
+      .then((page) => {
+        setMessages(page.messages);
+        setHistoryCursor(page.next_before_id);
+        setHasOlder(page.has_more);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") setMessageError(`Couldn't load messages: ${err.message}`);
+      })
+      .finally(() => setLoadingMessages(false));
     markRead(openId);
-    return () => {
-      stale = true;
-    };
+    return () => controller.abort();
   }, [openId]);
+
+  function retryHistory() {
+    if (openId === null) return;
+    setMessages([]);
+    setHistoryCursor(null);
+    setHasOlder(false);
+    setMessageError("");
+    setLoadingMessages(true);
+    loadMessages(openId)
+      .then((page) => {
+        setMessages(page.messages);
+        setHistoryCursor(page.next_before_id);
+        setHasOlder(page.has_more);
+      })
+      .catch((err: Error) => setMessageError(`Couldn't load messages: ${err.message}`))
+      .finally(() => setLoadingMessages(false));
+  }
+
+  async function loadOlder() {
+    if (openId === null || !historyCursor || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const page = await loadMessages(openId, historyCursor);
+      setMessages((current) => [...page.messages, ...current]);
+      setHistoryCursor(page.next_before_id);
+      setHasOlder(page.has_more);
+    } catch (err) {
+      toast(`Couldn't load older messages: ${err instanceof Error ? err.message : "request failed"}`);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
 
   // One socket for the session, opened once we know the token is valid.
   const loggedIn = me !== null;
@@ -115,16 +170,40 @@ export default function Home() {
       );
     }
     // Changes made by someone else; my own actions toast where I did them.
-    function toastMemberUpdate(event: Extract<ServerEvent, { type: "member:update" }>, list: Conversation[]) {
+    // `knownName` is read when the event arrives: after the reload a removed user's list no
+    // longer contains the group, so its name must come from the list as it was before.
+    function toastMemberUpdate(event: Extract<ServerEvent, { type: "member:update" }>, list: Conversation[], knownName?: string) {
       if (event.actor_id === myId) return;
-      const name = (list.find((c) => c.id === event.conversation_id) ??
-        conversationsRef.current.find((c) => c.id === event.conversation_id))?.name ?? "a group";
+      const name = knownName ?? list.find((c) => c.id === event.conversation_id)?.name ?? "a group";
       if (event.removed_user_id === myId) toast(`You were removed from ${name}`);
       else if (event.added_user_ids?.includes(myId!)) toast(`You were added to ${name}`);
       else if (event.removed_user_id === event.actor_id) toast(`Someone left ${name}`);
       else toast(`Members updated in ${name}`);
     }
-    const reloadList = () => loadList().then(setConversations).catch(() => {});
+    const reloadList = (): Promise<Conversation[]> => {
+      listRefreshQueued.current = true;
+      if (listRefreshRef.current) return listRefreshRef.current;
+
+      const refresh = async (): Promise<Conversation[]> => {
+        let latest = conversationsRef.current;
+        while (listRefreshQueued.current) {
+          listRefreshQueued.current = false;
+          try {
+            latest = await loadList();
+            conversationsRef.current = latest;
+            setConversations(latest);
+          } catch {
+            // Keep the last known list; the next server event or reconnect retries it.
+          }
+        }
+        return latest;
+      };
+      const request = refresh().finally(() => {
+        listRefreshRef.current = null;
+      });
+      listRefreshRef.current = request;
+      return request;
+    };
 
     // Coming back to the tab with a chat open = reading it.
     function onVisibilityChange() {
@@ -134,24 +213,32 @@ export default function Home() {
 
     const unsubscribe = subscribe((event) => {
       switch (event.type) {
+        case "socket:connecting":
+          setConnectionStatus("connecting");
+          break;
         case "socket:close":
+          setConnectionStatus("offline");
           if (!offline.current) toast("Connection lost. Reconnecting…");
           offline.current = true;
           break;
         case "socket:open":
+          setConnectionStatus("connected");
           if (offline.current) toast("Connected");
           offline.current = false;
           // (Re)connected: reload everything we may have missed, then tell the server our
           // client now has every message up to the newest one it loaded (offline catch-up).
-          loadList()
+          reloadList()
             .then((list) => {
-              setConversations(list);
               const newest = Math.max(0, ...list.map((c) => c.last_message?.id ?? 0));
               sendEvent({ type: "message:delivered", up_to_id: newest });
             })
             .catch(() => {});
           if (openId !== null) {
-            loadMessages(openId).then(setMessages).catch(() => {});
+            loadMessages(openId).then((page) => {
+              setMessages(page.messages);
+              setHistoryCursor(page.next_before_id);
+              setHasOlder(page.has_more);
+            }).catch(() => {});
             markRead(openId);
           }
           break;
@@ -188,7 +275,11 @@ export default function Home() {
           break;
         case "presence:update": // header + list + Group info show the server's online/last-seen
           setMembersVersion((v) => v + 1);
-          reloadList();
+          // Group presence is rendered by GroupDetails; only refresh the list when
+          // this user is the visible peer in a direct conversation.
+          if (conversationsRef.current.some((conversation) => conversation.other_user_id === event.user_id)) {
+            reloadList();
+          }
           break;
         case "conversation:read": // badge cleared (this tab or another of mine)
           reloadList();
@@ -196,12 +287,12 @@ export default function Home() {
         case "conversation:new": // a chat I'm in was created
         case "member:update": // members changed; maybe I was added or removed
           if (event.conversation_id === openId) setMembersVersion((v) => v + 1);
-          loadList()
+          const knownName = conversationsRef.current.find((c) => c.id === event.conversation_id)?.name;
+          reloadList()
             .then((list) => {
-              if (event.type === "member:update") toastMemberUpdate(event, list);
-              setConversations(list);
+              if (event.type === "member:update") toastMemberUpdate(event, list, knownName);
               // Removed (or left in another tab): close the chat.
-              if (openId !== null && !list.some((c) => c.id === openId)) closeChat();
+              if (openId !== null && !conversationsRef.current.some((c) => c.id === openId)) closeChat();
             })
             .catch(() => {});
           break;
@@ -256,6 +347,10 @@ export default function Home() {
   function select(id: number) {
     if (id === selectedId) return;
     setMessages([]); // don't flash the previous chat's messages
+    setLoadingMessages(true);
+    setMessageError("");
+    setHistoryCursor(null);
+    setHasOlder(false);
     setShowDetails(false);
     setShowSafety(false);
     setSelectedId(id);
@@ -264,6 +359,8 @@ export default function Home() {
   function closeChat() {
     setSelectedId(null);
     setMessages([]);
+    setHistoryCursor(null);
+    setHasOlder(false);
     setShowDetails(false);
     setShowSafety(false);
   }
@@ -290,13 +387,13 @@ export default function Home() {
   }
 
   if (error) return <p className={styles.error}>{error}</p>;
-  if (!me) return null;
+  if (!me) return <div className={styles.loadingShell}><div className={styles.loadingPulse} />Loading Signal…</div>;
 
   const selected = conversations.find((c) => c.id === selectedId);
   const typingInSelected = typing.filter((t) => t.conversation_id === selectedId).map((t) => t.user_id);
 
   return (
-    <div className={styles.app}>
+    <div className={styles.app} data-chat-open={openId === null ? "false" : "true"}>
       <NavRail me={me} tab={tab} onTab={setTab} onLogout={logout} />
       {tab === "settings" && <Settings me={me} onSaved={setMe} onBack={() => setTab("chats")} onLogout={logout} />}
       {(tab === "calls" || tab === "stories") && <ComingSoon tab={tab} />}
@@ -309,6 +406,10 @@ export default function Home() {
             typingIn={new Set(typing.map((t) => t.conversation_id))}
             onSelect={select}
             onNewChat={() => setShowNewChat(true)}
+            mobileHidden={selectedId !== null}
+            loading={loadingConversations}
+            error={conversationError}
+            onRetry={() => window.location.reload()}
           />
           <main className={styles.chat}>
             {selected ? (
@@ -317,8 +418,19 @@ export default function Home() {
                   conversation={selected}
                   onOpenDetails={selected.type === "group" ? () => setShowDetails(true) : undefined}
                   onSafetyNumber={selected.type === "direct" ? () => setShowSafety(true) : undefined}
+                  onBack={closeChat}
+                  connectionStatus={connectionStatus}
                 />
-                {selected.last_message === null && visibleMessages.length === 0 && typingInSelected.length === 0 ? (
+                {loadingMessages ? (
+                  <div className={styles.historyLoading} aria-label="Loading messages">
+                    {[0, 1, 2, 3].map((item) => <div className={styles.historySkeleton} key={item} />)}
+                  </div>
+                ) : messageError ? (
+                  <div className={styles.inlineError}>
+                    <p>{messageError}</p>
+                    <button onClick={retryHistory}>Retry</button>
+                  </div>
+                ) : selected.last_message === null && visibleMessages.length === 0 && typingInSelected.length === 0 ? (
                   // Brand-new chat: Signal shows who/what it is instead of an empty pane.
                   <div className={styles.intro}>
                     <Avatar
@@ -339,6 +451,9 @@ export default function Home() {
                     isGroup={selected.type === "group"}
                     typingUserIds={typingInSelected}
                     onRetry={retry}
+                    onLoadOlder={loadOlder}
+                    hasOlder={hasOlder}
+                    loadingOlder={loadingOlder}
                   />
                 )}
                 <MessageComposer key={selected.id} conversationId={selected.id} onSend={send} />

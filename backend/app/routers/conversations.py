@@ -1,5 +1,5 @@
 import turso
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
@@ -133,11 +133,27 @@ def conversation_list(conn: turso.Connection, user_id: int, only_id: int | None 
 @router.get("/{conversation_id}/messages")
 def list_messages(
     conversation_id: int,
+    before_id: int | None = Query(default=None, ge=1),
+    limit: int | None = Query(default=None, ge=1, le=100),
     user: turso.Row = Depends(get_current_user),
     conn: turso.Connection = Depends(get_db),
 ):
     require_member(conn, conversation_id, user["id"])
-    return fetch_messages(conn, user["id"], "m.conversation_id = ?", (conversation_id,))
+    messages = fetch_messages(
+        conn,
+        user["id"],
+        "m.conversation_id = ?",
+        (conversation_id,),
+        before_id=before_id,
+        limit=limit,
+    )
+    if before_id is None and limit is None:
+        return messages
+    return {
+        "messages": messages,
+        "has_more": len(messages) == limit,
+        "next_before_id": messages[0]["id"] if messages and len(messages) == limit else None,
+    }
 
 
 def _open_direct(my_id: int, other_id: int) -> tuple[dict, bool]:

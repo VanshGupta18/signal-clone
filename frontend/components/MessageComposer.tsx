@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Mic, SendHorizontal, Smile } from "lucide-react";
+import { toast } from "@/components/Toast";
 import { sendEvent } from "@/lib/socket";
 import styles from "./MessageComposer.module.css";
 
@@ -53,10 +54,20 @@ export default function MessageComposer({ conversationId, onSend }: Props) {
     stopTyping();
   }
 
+  function showComingSoon(feature: string) {
+    toast(`${feature} are coming soon`);
+  }
+
   return (
     <form className={styles.composer} onSubmit={(e) => { e.preventDefault(); submit(); }}>
       <div className={styles.inputWrap}>
-        <button type="button" className={styles.inlineIcon} title="Emoji" aria-label="Emoji">
+        <button
+          type="button"
+          className={styles.inlineIcon}
+          title="Emoji picker coming soon"
+          aria-label="Emoji picker coming soon"
+          onClick={() => showComingSoon("Emojis")}
+        >
           <Smile size={20} />
         </button>
         <textarea
@@ -80,7 +91,13 @@ export default function MessageComposer({ conversationId, onSend }: Props) {
           <SendHorizontal size={18} />
         </button>
       ) : (
-        <button type="button" className={styles.iconButton} title="Voice message" aria-label="Voice message">
+        <button
+          type="button"
+          className={styles.iconButton}
+          title="Voice messages coming soon"
+          aria-label="Voice messages coming soon"
+          onClick={() => showComingSoon("Voice messages")}
+        >
           <Mic size={20} />
         </button>
       )}

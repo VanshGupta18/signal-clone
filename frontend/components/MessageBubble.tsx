@@ -35,7 +35,7 @@ export default function MessageBubble({ message, isOwn, isGroup, joinsPrev, join
         </div>
       )}
       {failed && (
-        <button className={styles.retry} onClick={onRetry} title="Not sent. Click to retry." aria-label="Retry sending">
+        <button type="button" className={styles.retry} onClick={onRetry} title="Not sent. Click to retry." aria-label="Retry sending">
           <CircleAlert size={20} />
         </button>
       )}

@@ -8,8 +8,8 @@ services:
     buildCommand: pip install -r requirements.txt
     # seed.py is a no-op when users already exist. --no-access-log drops HTTP
     # request lines; the WebSocket ?token= is redacted by a log filter in app/main.py.
-    startCommand: python seed.py && uvicorn app.main:app --host 0.0.0.0 --port $PORT --no-access-log
-    healthCheckPath: /api/health
+    startCommand: python seed.py && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
+    healthCheckPath: /api/health/ready
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.12

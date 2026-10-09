@@ -22,7 +22,15 @@ def require_member(conn: turso.Connection, conversation_id: int, user_id: int) -
         raise HTTPException(status_code=404, detail="Conversation not found")
 
 
-def fetch_messages(conn: turso.Connection, my_id: int, where: str, params: tuple) -> list[dict]:
+def fetch_messages(
+    conn: turso.Connection,
+    my_id: int,
+    where: str,
+    params: tuple,
+    *,
+    before_id: int | None = None,
+    limit: int | None = None,
+) -> list[dict]:
     """Messages as the API returns them. `where` is a fixed SQL fragment from this
     module's callers (never user input); values always go through `params`.
 
@@ -37,9 +45,11 @@ def fetch_messages(conn: turso.Connection, my_id: int, where: str, params: tuple
           FROM messages m
           JOIN users u ON u.id = m.sender_id
          WHERE {where}
-         ORDER BY m.id
+           {"AND m.id < ?" if before_id is not None else ""}
+         ORDER BY m.id {"DESC" if before_id is not None or limit is not None else "ASC"}
+         {"LIMIT ?" if limit is not None else ""}
         """,
-        (my_id, *params),
+        (my_id, *params, *(() if before_id is None else (before_id,)), *((limit,) if limit is not None else ())),
     ).fetchall()
 
     messages = []
@@ -59,6 +69,8 @@ def fetch_messages(conn: turso.Connection, my_id: int, where: str, params: tuple
             "created_at": row["created_at"],
             "status": status,
         })
+    if before_id is not None or limit is not None:
+        messages.reverse()
     return messages
 
 

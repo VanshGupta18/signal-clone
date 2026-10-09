@@ -21,6 +21,7 @@ function transmit(payload: SendPayload) {
 export function connect() {
   const token = getToken();
   if (!token || socket) return;
+  listeners.forEach((listener) => listener({ type: "socket:connecting" }));
   // http://host -> ws://host, https://host -> wss://host
   const ws = new WebSocket(`${API_URL.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(token)}`);
   socket = ws;
@@ -53,8 +54,20 @@ export function connect() {
   };
 }
 
+// Skip the rest of the backoff (up to 10s) when someone is actually waiting: they just
+// pressed send, or the browser says the network is back.
+function reconnectNow() {
+  if (socket || retryTimer === undefined) return; // already (re)connecting, or closed on purpose
+  clearTimeout(retryTimer);
+  retryTimer = undefined;
+  retryMs = MIN_RETRY_MS;
+  connect();
+}
+if (typeof window !== "undefined") window.addEventListener("online", reconnectNow);
+
 export function disconnect() {
   clearTimeout(retryTimer);
+  retryTimer = undefined;
   outbox.clear();
   if (socket) {
     socket.onclose = null; // closed on purpose: don't reconnect
@@ -72,6 +85,7 @@ export function subscribe(listener: (event: ServerEvent) => void): () => void {
 export function sendMessage(payload: SendPayload) {
   outbox.set(payload.client_id, payload);
   if (socket?.readyState === WebSocket.OPEN) transmit(payload);
+  else reconnectNow();
 }
 
 // Receipts, reads and typing: fire-and-forget. If offline they're dropped; the page

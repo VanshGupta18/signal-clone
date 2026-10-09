@@ -1,11 +1,12 @@
 import json
+import asyncio
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, ValidationError
 
 from app.auth import user_for_token
-from app.database import db
+from app.database import db, push_pending
 from app.messages import (
     NOW, mark_delivered, mark_read, member_ids, peer_ids, require_member, send_message, tick_updates,
 )
@@ -15,6 +16,7 @@ router = APIRouter()
 # Connection manager: user_id -> that user's open sockets (one per tab/device).
 # ponytail: in-memory, so it only works with ONE backend process (D25); several instances need pub/sub (e.g. Redis).
 connections: dict[int, set[WebSocket]] = {}
+SEND_TIMEOUT_SECONDS = 2
 
 
 def is_online(user_id: int) -> bool:
@@ -24,14 +26,27 @@ def is_online(user_id: int) -> bool:
 
 async def send_to(user_ids, event: dict, skip: WebSocket | None = None) -> None:
     """Push an event to every open socket of these users (except `skip`)."""
+    targets: list[WebSocket] = []
     for user_id in user_ids:
         for ws in list(connections.get(user_id, ())):  # copy: the set can change while we await
             if ws is skip:
                 continue
+            targets.append(ws)
+
+    async def deliver(ws: WebSocket) -> None:
+        try:
+            await asyncio.wait_for(ws.send_json(event), timeout=SEND_TIMEOUT_SECONDS)
+        except Exception:
+            # Too slow or already gone: close it rather than silently skipping it, so the
+            # client reconnects and refetches instead of quietly missing events. The socket's
+            # own handler (finally block) unregisters it and updates presence.
             try:
-                await ws.send_json(event)
-            except Exception:  # socket already closing; its own handler unregisters it
+                await asyncio.wait_for(ws.close(code=1011), timeout=SEND_TIMEOUT_SECONDS)
+            except Exception:
                 pass
+
+    # Concurrently, so one slow client can't delay everyone else.
+    await asyncio.gather(*(deliver(ws) for ws in targets), return_exceptions=True)
 
 
 # Client payloads. No user/sender fields anywhere: identity is always the socket's session.
@@ -81,7 +96,7 @@ def handle_event(user_id: int, text: str) -> tuple[dict | None, list]:
     try:
         if kind == "message:send":
             body = SendIn.model_validate(event)
-            with db() as conn:
+            with db(push_now=False) as conn:  # acked before the Turso push (D84)
                 message, created = send_message(conn, user_id, body.conversation_id, body.content, body.client_id)
                 # A retry of a saved message (created=False) is only re-acked: everyone already got message:new.
                 members = member_ids(conn, body.conversation_id) if created else []
@@ -91,13 +106,13 @@ def handle_event(user_id: int, text: str) -> tuple[dict | None, list]:
 
         if kind == "message:delivered":
             body = DeliveredIn.model_validate(event)
-            with db() as conn:
+            with db(push_now=False) as conn:
                 changed = mark_delivered(conn, user_id, body.message_ids, body.up_to_id)
                 return None, receipt_pushes(conn, changed)
 
         if kind == "conversation:read":
             body = ConversationIn.model_validate(event)
-            with db() as conn:
+            with db(push_now=False) as conn:
                 moved, changed = mark_read(conn, user_id, body.conversation_id)
                 pushes = receipt_pushes(conn, changed)
             if not moved and not changed:
@@ -108,7 +123,7 @@ def handle_event(user_id: int, text: str) -> tuple[dict | None, list]:
 
         if kind in ("typing:start", "typing:stop"):
             body = ConversationIn.model_validate(event)
-            with db() as conn:
+            with db(push_now=False) as conn:
                 require_member(conn, body.conversation_id, user_id)
                 others = [m for m in member_ids(conn, body.conversation_id) if m != user_id]
             return None, [(others, {"type": kind, "conversation_id": body.conversation_id, "user_id": user_id})]
@@ -163,11 +178,13 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
         while True:
             text = await websocket.receive_text()
             reply, pushes = await run_in_threadpool(handle_event, user_id, text)
-            # Persisted (and pushed to Turso) before anything goes out.
+            # Committed locally before anything goes out; the Turso push follows below (D84).
             if reply is not None:
                 await websocket.send_json(reply)
             for user_ids, event in pushes:
                 await send_to(user_ids, event, skip=websocket)
+            # Committed locally and everyone is told; now sync to Turso (no-op if nothing changed).
+            await run_in_threadpool(push_pending)
     except WebSocketDisconnect:
         pass
     finally:

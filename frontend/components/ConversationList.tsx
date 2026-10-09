@@ -13,9 +13,24 @@ type Props = {
   typingIn: Set<number>; // conversation ids where someone is typing
   onSelect: (id: number) => void;
   onNewChat: () => void;
+  mobileHidden?: boolean;
+  loading?: boolean;
+  error?: string;
+  onRetry?: () => void;
 };
 
-export default function ConversationList({ conversations, selectedId, myId, typingIn, onSelect, onNewChat }: Props) {
+export default function ConversationList({
+  conversations,
+  selectedId,
+  myId,
+  typingIn,
+  onSelect,
+  onNewChat,
+  mobileHidden,
+  loading,
+  error,
+  onRetry,
+}: Props) {
   const [query, setQuery] = useState("");
   const input = useRef<HTMLInputElement>(null);
   // Client-side filter of the loaded list: chat name or last-message preview. People not
@@ -26,7 +41,7 @@ export default function ConversationList({ conversations, selectedId, myId, typi
   );
 
   return (
-    <section className={styles.pane}>
+    <section className={`${styles.pane} ${mobileHidden ? styles.mobileHidden : ""}`}>
       <header className={styles.header}>
         <h1 className={styles.title}>Chats</h1>
         <button className={styles.iconButton} title="New chat" aria-label="New chat" onClick={onNewChat}>
@@ -46,7 +61,7 @@ export default function ConversationList({ conversations, selectedId, myId, typi
           aria-label="Search chats"
         />
         {query && (
-          <button className={styles.clearButton} onClick={() => {
+          <button type="button" className={styles.clearButton} onClick={() => {
               setQuery("");
               input.current?.focus();
             }}
@@ -57,7 +72,18 @@ export default function ConversationList({ conversations, selectedId, myId, typi
       </label>
 
       <div className={styles.list}>
-        {visible.map((conversation) => (
+        {loading && (
+          <div className={styles.loading} aria-label="Loading conversations">
+            {[0, 1, 2, 3, 4].map((item) => <div className={styles.loadingRow} key={item} />)}
+          </div>
+        )}
+        {!loading && error && (
+          <div className={styles.errorState}>
+            <p>{error}</p>
+            <button type="button" onClick={onRetry}>Retry</button>
+          </div>
+        )}
+        {!loading && !error && visible.map((conversation) => (
           <ConversationItem
             key={conversation.id}
             conversation={conversation}
@@ -67,7 +93,7 @@ export default function ConversationList({ conversations, selectedId, myId, typi
             onClick={() => onSelect(conversation.id)}
           />
         ))}
-        {visible.length === 0 && (
+        {!loading && !error && visible.length === 0 && (
           <p className={styles.empty}>{query ? `No results for "${query}"` : "No chats yet"}</p>
         )}
       </div>

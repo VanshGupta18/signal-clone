@@ -1,5 +1,7 @@
 import os
 import threading
+import time
+import logging
 from contextlib import contextmanager
 
 import turso
@@ -60,6 +62,7 @@ CREATE TABLE IF NOT EXISTS conversation_members (
     PRIMARY KEY (conversation_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_members_user ON conversation_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_members_user_read ON conversation_members(user_id, last_read_message_id);
 
 CREATE TABLE IF NOT EXISTS messages (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +74,7 @@ CREATE TABLE IF NOT EXISTS messages (
     UNIQUE (sender_id, client_id)
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_sender ON messages(conversation_id, sender_id, id);
 
 CREATE TABLE IF NOT EXISTS message_receipts (
     message_id    INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
@@ -86,6 +90,11 @@ CREATE INDEX IF NOT EXISTS idx_receipts_user_status ON message_receipts(user_id,
 
 _conn: turso.Connection | None = None
 _lock = threading.Lock()
+logger = logging.getLogger(__name__)
+
+
+def _change_count() -> int:
+    return _conn.execute("SELECT total_changes()").fetchone()[0]
 
 
 def init_db() -> None:
@@ -107,29 +116,74 @@ def init_db() -> None:
 def close_db() -> None:
     global _conn
     if _conn is not None:
+        push_pending()  # graceful shutdown (deploy, Render idle spin-down): don't strand commits
         _conn.close()
         _conn = None
 
 
+# True when local commits haven't reached Turso yet (see db(push_now=False)).
+_unpushed = False
+
+
 def _push() -> None:
+    """Sync local commits to Turso Cloud. Caller holds _lock."""
+    global _unpushed
     if TURSO_DATABASE_URL:
-        _conn.push()  # ponytail: pushes on every request; skip when nothing changed if latency matters
+        _conn.push()  # several network round trips: ~0.5s near the DB, ~3s across continents
+    _unpushed = False
+
+
+def push_pending() -> None:
+    """Push commits made with db(push_now=False). The WebSocket calls this right after replying,
+    so a chat message is acked as soon as it's committed locally instead of waiting for Turso."""
+    if not _unpushed:
+        return
+    with _lock:
+        if _unpushed:
+            try:
+                _push()
+            except Exception:  # network blip: _unpushed stays True, the next write/push retries
+                logger.exception("turso_push_failed")
 
 
 @contextmanager
-def db():
+def db(push_now: bool = True):
     """Exclusive use of the shared connection.
+
+    After a write, `push_now=True` syncs to Turso before returning (REST: the response only
+    goes out once the write is in the cloud). `push_now=False` leaves it to push_pending().
 
     ponytail: one connection + a global lock = every DB operation runs one at a time.
     Fine for a demo (queries take microseconds); a busier app would use a server DB.
     """
+    global _unpushed
+    waited_at = time.perf_counter()
     with _lock:
+        waited_ms = (time.perf_counter() - waited_at) * 1000
+        if waited_ms > 25:
+            logger.warning("db_lock_wait_ms=%.1f", waited_ms)
+        started_at = time.perf_counter()
+        changes_before = _change_count()
         try:
             yield _conn
-        finally:
+        except BaseException:
             if _conn.in_transaction:  # handler failed mid-write without `with conn:`
                 _conn.rollback()
-            _push()  # persist to the cloud before the response goes out
+            raise
+        else:
+            if _conn.in_transaction:  # handler returned without committing a write
+                _conn.rollback()
+            # Read-only requests should not wait on a network round-trip to Turso.
+            # Writes still push before the request returns, preserving persistence
+            # guarantees while avoiding a push storm during list/history reloads.
+            if _change_count() != changes_before:
+                _unpushed = True
+                if push_now:
+                    _push()
+        finally:
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            if elapsed_ms > 100:
+                logger.warning("db_operation_ms=%.1f", elapsed_ms)
 
 
 def get_db():

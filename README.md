@@ -11,7 +11,7 @@ A Signal Desktop-style messaging web app: phone-number sign-in with a mock code,
 | Frontend (Vercel) | https://signal-clone-pied.vercel.app |
 | Backend (Render) | https://signal-clone-api-1q9d.onrender.com (health: `/api/health`) |
 
-The backend runs on Render's free tier, which sleeps after about 15 minutes without traffic. The first request after that can take about a minute. **Open https://signal-clone-api-1q9d.onrender.com/api/health first** and wait for `{"status":"ok"}`, then open the frontend.
+The backend runs on Render's free tier, which sleeps after about 15 minutes without traffic. The first request after that can take about a minute. **Open https://signal-clone-api-1q9d.onrender.com/api/health/ready first** and wait for `{"status":"ok"}`, then open the frontend. `/api/health/live` only checks that the process is alive; `/api/health/ready` also verifies the database.
 
 ## Demo accounts
 
@@ -97,13 +97,15 @@ flowchart LR
     B <-- "WSS /ws?token=…<br/>events" --> WS
     API --> DB
     WS --> DB
-    DB -- "push() after each request,<br/>pull on boot" --> T
+    DB -- "push() after writes,<br/>pull on boot" --> T
 ```
 
 - **REST vs WebSocket.** REST handles everything request-shaped: login, profile, search, contacts, the conversation list, message history, creating chats/groups and membership changes. The WebSocket carries everything live: sending messages (`message:send`), delivery and read acknowledgements, typing, presence, and "something changed, reload" notifications. List-shaped state (previews, order, unread counts, presence) is always re-fetched from `GET /api/conversations` after an event rather than patched in the browser, so it stays derived from the database.
 - **One shared DB connection behind a global lock.** `pyturso` fails with "database is locked" under concurrent connections and has no busy-timeout, so the backend opens a single connection at startup and every DB operation takes a `threading.Lock`. WebSocket handlers and the async REST handlers run their DB work in a thread (`run_in_threadpool`) so waiting for the lock never blocks the event loop; WebSocket pushes happen only after the transaction committed and the lock is released.
-- **Persistence in production.** Render's free disk is temporary. `pyturso` keeps a local SQLite file and syncs it with Turso Cloud: it downloads the database on boot and pushes local changes after every request, before the response is sent. A client therefore only sees success once the write is in the cloud.
+- **Persistence in production.** Render's free disk is temporary. `pyturso` keeps a local SQLite file and syncs it with Turso Cloud: it downloads the database on boot and pushes local changes after writes. REST writes (login, profile, groups, membership) push before the response is sent. WebSocket events (sending, delivered, read) are acknowledged right after the local commit and pushed immediately afterwards, because one push costs several network round trips (~3 s when the server and database are on different continents) and would otherwise hold every message on "sending". Reads never push. A graceful shutdown pushes anything still pending.
 - **In-memory connection manager.** `websocket.py` keeps `dict[user_id, set[WebSocket]]` (one socket per tab). `send_to(user_ids, event)` fans an event out to every open socket of those users. This only works within one backend process; several instances would need shared pub/sub (for example Redis).
+- **Single-worker deployment.** Render runs exactly one Uvicorn worker because the WebSocket connection manager and shared SQLite connection are process-local. Scaling workers or replicas without shared pub/sub and a server database would split presence and delivery state.
+- **Operational safeguards.** Requests expose `X-Request-ID` and `Server-Timing`; slow requests and DB lock waits are logged. History is cursor-paginated (`limit` plus `before_id`), the browser cancels stale history requests, retries only safe GETs (with a 30 s timeout; writes never time out client-side, so a login against a cold backend isn't cut off), coalesces list refreshes, and reconnects immediately when the user sends while disconnected.
 
 ## Message lifecycle
 
@@ -111,7 +113,7 @@ What happens when Alice sends "hi" to Bob, exactly as implemented:
 
 1. **sending** (browser only). The composer creates a pending bubble with a new `client_id = crypto.randomUUID()` and sends `message:send {conversation_id, content, client_id}`. The event stays in an in-memory outbox until it is acked or rejected, and the whole outbox is resent (same `client_id`) every time the socket reconnects.
 2. **Validate and persist (one transaction).** The server checks Alice is a member (otherwise an `error` event "Conversation not found"), strips the content and checks 1-4000 characters. Then, in one transaction: insert the message with `INSERT ... ON CONFLICT(sender_id, client_id) DO NOTHING`, insert one `message_receipts` row with status `sent` for every other current member, and set `conversations.updated_at` to the message's `created_at`. If the insert hit the unique constraint, it is a retry: nothing is written and the existing message is returned.
-3. **sent.** Only after the commit (and the Turso push in production) does the server reply `message:ack {client_id, message}` to the sending socket. The browser replaces the pending bubble by `client_id`; the message now shows one check.
+3. **sent.** Only after the commit does the server reply `message:ack {client_id, message}` to the sending socket (in production the Turso push follows right after the ack and the broadcast). The browser replaces the pending bubble by `client_id`; the message now shows one check.
 4. **Broadcast.** For a new message (not a retry) the server pushes `message:new {message}` to every member's open sockets, including Alice's other tabs, skipping the socket that sent it. Offline members get nothing now; the message is already in the database.
 5. **delivered.** Bob's client answers `message:new` with `message:delivered {message_ids: [id]}`. A push alone never counts as delivered. For messages that arrived while Bob was offline, after (re)connecting and loading the conversation list his client sends `message:delivered {up_to_id}` with the newest message id it saw. Both only update Bob's own receipts and only `WHERE status = 'sent'`, so a status never moves backwards.
 6. **read.** When Bob has the chat open and the tab is visible, his client sends `conversation:read {conversation_id}`. In one transaction the server moves his read cursor (`conversation_members.last_read_message_id`) forward to the conversation's newest message id, then sets his receipts up to the cursor to `read` (`WHERE status != 'read'`). His tabs get `conversation:read` back and reload the list, so the unread badge clears everywhere.
@@ -347,6 +349,7 @@ Why this split:
 - **Mock OTP.** Every number accepts `123456`; anyone can sign in as any number. No SMS provider.
 - **Sessions never expire.** Logout revokes them; there is no `expires_at`. Tokens live in `localStorage`, so an XSS bug could read them (React escapes rendered text, which reduces that risk).
 - **Phone numbers can be enumerated.** User search matches names and partial numbers and returns phone numbers.
+- **Cloud sync lags chat acks by one push.** A sent message is acknowledged once it is committed to the server's local SQLite file; the Turso push follows within a second or a few. If the server crashed in that window (not a normal deploy or idle shutdown, which push first), that last message would be missing after the restart.
 - **Single backend process.** The WebSocket connection manager is in memory; scaling to several instances would need shared pub/sub.
 - **Global DB lock.** All database work runs one operation at a time. Queries take microseconds, so it is fine for a demo, not for real load. In production every request also waits for one push to Turso.
 - **Render cold starts.** The free backend sleeps after ~15 minutes idle and needs about a minute to wake. While it sleeps or redeploys, connected clients show a reconnect toast and retry.

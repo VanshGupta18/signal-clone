@@ -26,24 +26,34 @@ type Confirm = { kind: "remove"; member: Member } | { kind: "leave" } | null;
 // The buttons are only convenience: the backend enforces every rule.
 export default function GroupDetails({ conversation, myId, version, onClose, onLeft }: Props) {
   const [members, setMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Person[]>([]);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [error, setError] = useState("");
+  const [mutating, setMutating] = useState(false);
   const path = `/api/conversations/${conversation.id}/members`;
 
   useEffect(() => {
-    api<Member[]>(path).then(setMembers).catch(() => {}); // 404 = I was removed; the page closes us
+    api<Member[]>(path)
+      .then(setMembers)
+      .catch(() => {}) // 404 = I was removed; the page closes us
+      .finally(() => setLoading(false));
   }, [path, version]);
 
   const amAdmin = members.some((m) => m.id === myId && m.role === "admin");
 
   async function run(action: () => Promise<void>) {
+    if (mutating) return;
     setError("");
+    setMutating(true);
     try {
       await action();
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setMutating(false);
+      setConfirm(null); // the confirm dialog stays open (showing "Working…") until the request ends
     }
   }
 
@@ -57,7 +67,6 @@ export default function GroupDetails({ conversation, myId, version, onClose, onL
 
   const remove = (member: Member) =>
     run(async () => {
-      setConfirm(null);
       await api(`${path}/${member.id}`, { method: "DELETE" });
       setMembers((list) => list.filter((m) => m.id !== member.id));
       toast(`${member.display_name} removed`);
@@ -65,7 +74,6 @@ export default function GroupDetails({ conversation, myId, version, onClose, onL
 
   const leave = () =>
     run(async () => {
-      setConfirm(null);
       await api(`${path}/${myId}`, { method: "DELETE" });
       onLeft();
     });
@@ -77,15 +85,15 @@ export default function GroupDetails({ conversation, myId, version, onClose, onL
         onClose={() => setAdding(false)}
         footer={
           <>
-            <button className={dialogStyles.button} onClick={() => setAdding(false)}>
+            <button className={dialogStyles.button} onClick={() => setAdding(false)} disabled={mutating}>
               Cancel
             </button>
             <button
               className={`${dialogStyles.button} ${dialogStyles.primary}`}
-              disabled={selected.length === 0}
+              disabled={selected.length === 0 || mutating}
               onClick={addSelected}
             >
-              Add
+              {mutating ? "Adding…" : "Add"}
             </button>
           </>
         }
@@ -102,7 +110,7 @@ export default function GroupDetails({ conversation, myId, version, onClose, onL
         <div className={styles.groupHead}>
           <Avatar name={conversation.name} src={conversation.avatar_url} colorSeed={conversation.id} size={80} />
           <h3 className={styles.groupName}>{conversation.name}</h3>
-          <span className={styles.muted}>{members.length} {members.length === 1 ? "member" : "members"}</span>
+          <span className={styles.muted}>{loading ? "Loading members…" : `${members.length} ${members.length === 1 ? "member" : "members"}`}</span>
         </div>
         {error && <p className={styles.error}>{error}</p>}
         {amAdmin && (
@@ -113,28 +121,35 @@ export default function GroupDetails({ conversation, myId, version, onClose, onL
             Add members
           </button>
         )}
-        <div className={styles.section}>Members</div>
-        {members.map((m) => (
-          <PersonRow key={m.id} person={m} subtitle={m.id === myId ? "You" : m.phone} online={m.online}>
-            {m.role === "admin" && <span className={styles.label}>Admin</span>}
-            {amAdmin && m.id !== myId && (
-              <button
-                className={styles.iconButton}
-                onClick={() => setConfirm({ kind: "remove", member: m })}
-                aria-label={`Remove ${m.display_name}`}
-                title="Remove from group"
-              >
-                <UserMinus size={18} />
-              </button>
-            )}
-          </PersonRow>
-        ))}
-        <button className={`${styles.action} ${styles.dangerAction}`} onClick={() => setConfirm({ kind: "leave" })}>
-          <span className={styles.actionIcon}>
-            <LogOut size={18} />
-          </span>
-          Leave group
-        </button>
+        {loading ? (
+          <GroupDetailsSkeleton />
+        ) : (
+          <>
+            <div className={styles.section}>Members</div>
+            {members.map((m) => (
+              <PersonRow key={m.id} person={m} subtitle={m.id === myId ? "You" : m.phone} online={m.online}>
+                {m.role === "admin" && <span className={styles.label}>Admin</span>}
+                {amAdmin && m.id !== myId && (
+                  <button
+                    className={styles.iconButton}
+                    onClick={() => !mutating && setConfirm({ kind: "remove", member: m })}
+                    disabled={mutating}
+                    aria-label={`Remove ${m.display_name}`}
+                    title="Remove from group"
+                  >
+                    <UserMinus size={18} />
+                  </button>
+                )}
+              </PersonRow>
+            ))}
+            <button className={`${styles.action} ${styles.dangerAction}`} onClick={() => !mutating && setConfirm({ kind: "leave" })} disabled={mutating}>
+              <span className={styles.actionIcon}>
+                <LogOut size={18} />
+              </span>
+              Leave group
+            </button>
+          </>
+        )}
       </Dialog>
 
       {confirm?.kind === "remove" && (
@@ -144,6 +159,7 @@ export default function GroupDetails({ conversation, myId, version, onClose, onL
           confirmLabel="Remove"
           onConfirm={() => remove(confirm.member)}
           onClose={() => setConfirm(null)}
+          disabled={mutating}
         />
       )}
       {confirm?.kind === "leave" && (
@@ -153,8 +169,26 @@ export default function GroupDetails({ conversation, myId, version, onClose, onL
           confirmLabel="Leave"
           onConfirm={leave}
           onClose={() => setConfirm(null)}
+          disabled={mutating}
         />
       )}
     </>
+  );
+}
+
+function GroupDetailsSkeleton() {
+  return (
+    <div className={styles.skeleton} aria-label="Loading group members">
+      <div className={styles.skeletonSection} />
+      {[0, 1, 2].map((item) => (
+        <div className={styles.skeletonRow} key={item}>
+          <div className={styles.skeletonAvatar} />
+          <div className={styles.skeletonText}>
+            <div className={styles.skeletonName} />
+            <div className={styles.skeletonPhone} />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

@@ -16,6 +16,9 @@ type Props = {
   isGroup: boolean;
   typingUserIds: number[]; // others typing in this chat
   onRetry: (message: Message) => void;
+  onLoadOlder?: () => void;
+  hasOlder?: boolean;
+  loadingOlder?: boolean;
 };
 
 // Consecutive messages from the same sender, on the same day, a few minutes apart
@@ -29,17 +32,38 @@ function sameRun(a: Message | undefined, b: Message | undefined): boolean {
   );
 }
 
-export default function MessageList({ messages, myId, isGroup, typingUserIds, onRetry }: Props) {
+export default function MessageList({ messages, myId, isGroup, typingUserIds, onRetry, onLoadOlder, hasOlder, loadingOlder }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
+  const initialScroll = useRef(true);
+  const previousHeight = useRef(0);
+  const previousCount = useRef(-1);
 
   // Start at the newest message (before paint, so there's no visible jump).
   useLayoutEffect(() => {
-    if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
-  }, [messages, typingUserIds.length]);
+    const element = scroller.current;
+    if (!element) return;
+    if (messages.length === previousCount.current) return;
+    if (initialScroll.current) {
+      element.scrollTop = element.scrollHeight;
+      initialScroll.current = false;
+    } else if (loadingOlder) {
+      element.scrollTop += element.scrollHeight - previousHeight.current;
+    }
+    previousCount.current = messages.length;
+    previousHeight.current = element.scrollHeight;
+  }, [messages, loadingOlder]);
 
   return (
-    <div className={styles.scroller} ref={scroller}>
+    <div
+      className={styles.scroller}
+      ref={scroller}
+      onScroll={(event) => {
+        previousHeight.current = event.currentTarget.scrollHeight;
+        if (event.currentTarget.scrollTop < 80 && hasOlder && !loadingOlder) onLoadOlder?.();
+      }}
+    >
       <div className={styles.list}>
+        {hasOlder && <div className={styles.day}>{loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}</div>}
         <EncryptionNotice />
         {messages.map((message, i) => {
           const prev = messages[i - 1];

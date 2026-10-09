@@ -2,6 +2,10 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const TOKEN_KEY = "signal_token";
+// GETs only, and long enough for a cold Render backend (~1 min to wake across retries).
+// Writes never time out client-side: aborting a login/send mid-flight helps nobody.
+const GET_TIMEOUT_MS = 30000;
+const GET_RETRIES = 2;
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -29,17 +33,43 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (init.body) headers.set("Content-Type", "application/json");
 
-  const res = await fetch(`${API_URL}${path}`, { ...init, headers });
+  const canRetry = (init.method ?? "GET").toUpperCase() === "GET";
+  let lastError: unknown;
 
-  if (res.status === 401) {
-    expireSession();
-    throw new Error("Session expired");
+  for (let attempt = 0; attempt <= (canRetry ? GET_RETRIES : 0); attempt += 1) {
+    const controller = new AbortController();
+    // abort(reason) makes fetch reject with this Error (not an AbortError), so callers can
+    // tell a timeout apart from their own cancellation.
+    const timeout = canRetry ? setTimeout(() => controller.abort(new Error("Request timed out")), GET_TIMEOUT_MS) : undefined;
+    const onAbort = () => controller.abort();
+    init.signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      const res = await fetch(`${API_URL}${path}`, { ...init, headers, signal: controller.signal });
+      if (res.status >= 500 && canRetry && attempt < GET_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+        continue;
+      }
+
+      if (res.status === 401) {
+        expireSession();
+        throw new Error("Session expired");
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(errorMessage(body) ?? `Request failed (${res.status})`);
+      }
+      return res.status === 204 ? (undefined as T) : res.json();
+    } catch (error) {
+      lastError = error;
+      if (init.signal?.aborted) throw error;
+      if (!canRetry || attempt >= GET_RETRIES) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+    } finally {
+      clearTimeout(timeout);
+      init.signal?.removeEventListener("abort", onAbort);
+    }
   }
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(errorMessage(body) ?? `Request failed (${res.status})`);
-  }
-  return res.status === 204 ? (undefined as T) : res.json();
+  throw lastError instanceof Error ? lastError : new Error("Request failed");
 }
 
 // FastAPI errors are {detail: "msg"} or, for validation, {detail: [{msg: "Value error, msg"}]}.

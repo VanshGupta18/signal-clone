@@ -20,7 +20,7 @@ export default function ConversationItem({ conversation, myId, selected, typing,
   else if (last && conversation.type === "group") prefix = `${last.sender_name.split(" ")[0]}: `;
 
   return (
-    <button className={`${styles.row} ${selected ? styles.selected : ""}`} onClick={onClick}>
+    <button type="button" className={`${styles.row} ${selected ? styles.selected : ""}`} onClick={onClick} aria-current={selected ? "page" : undefined}>
       <span className={styles.avatar}>
         <Avatar
           name={conversation.name}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Phone, ShieldCheck, Video } from "lucide-react";
+import { ArrowLeft, Phone, ShieldCheck, Video } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import { toast } from "@/components/Toast";
 import { formatLastSeen } from "@/lib/time";
@@ -12,11 +12,13 @@ type Props = {
   conversation: Conversation;
   onOpenDetails?: () => void; // groups: clicking the name opens Group info
   onSafetyNumber?: () => void; // direct chats: the (mock) safety number dialog
+  onBack?: () => void;
+  connectionStatus?: "connecting" | "connected" | "offline";
 };
 
 const callsComingSoon = () => toast("Calls are coming soon");
 
-export default function ChatHeader({ conversation, onOpenDetails, onSafetyNumber }: Props) {
+export default function ChatHeader({ conversation, onOpenDetails, onSafetyNumber, onBack, connectionStatus = "connected" }: Props) {
   // Re-render every minute so "Last seen 5 min ago" doesn't go stale.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -26,11 +28,18 @@ export default function ChatHeader({ conversation, onOpenDetails, onSafetyNumber
 
   let subtitle = "";
   if (conversation.type === "group") subtitle = `${conversation.member_count} ${conversation.member_count === 1 ? "member" : "members"}`;
+  // While we're disconnected their presence is unknown, so show only our connection status.
+  else if (connectionStatus !== "connected") subtitle = "";
   else if (conversation.other_online) subtitle = "Online";
   else if (conversation.other_last_seen_at) subtitle = formatLastSeen(conversation.other_last_seen_at, now);
 
   return (
     <header className={styles.header}>
+      {onBack && (
+        <button className={styles.backButton} onClick={onBack} aria-label="Back to chats" title="Back to chats">
+          <ArrowLeft size={20} />
+        </button>
+      )}
       <button
         className={styles.title}
         onClick={onOpenDetails}
@@ -47,6 +56,11 @@ export default function ChatHeader({ conversation, onOpenDetails, onSafetyNumber
         <div className={styles.text}>
           <div className={styles.name}>{conversation.name}</div>
           {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
+          {connectionStatus !== "connected" && (
+            <div className={styles.connection} aria-live="polite">
+              {connectionStatus === "connecting" ? "Connecting…" : "Offline — messages will retry"}
+            </div>
+          )}
         </div>
       </button>
       <button className={styles.iconButton} title="Video call" aria-label="Video call" onClick={callsComingSoon}>
