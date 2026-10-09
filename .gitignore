@@ -10,5 +10,4 @@ node_modules/
 .next/
 .DS_Store
 .claude/
-pytest.ini
 docs/

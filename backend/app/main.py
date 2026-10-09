@@ -34,7 +34,17 @@ async def lifespan(app: FastAPI):
     close_db()
 
 
-app = FastAPI(title="Signal Clone API", lifespan=lifespan)
+app = FastAPI(
+    title="Signal Clone API",
+    version="1.0.0",
+    description=(
+        "REST API of a Signal Desktop clone. Real-time events (sending, receipts, typing, presence, "
+        "reactions) use the WebSocket at `/ws?token=<session token>`; see the README for the event list. "
+        "Authenticate with `Authorization: Bearer <token>` from `POST /api/auth/verify` "
+        "(mock verification: the code is always 123456)."
+    ),
+    lifespan=lifespan,
+)
 
 
 @app.middleware("http")

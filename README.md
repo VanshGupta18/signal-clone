@@ -249,7 +249,9 @@ All REST paths are under `/api`. Authenticated endpoints need `Authorization: Be
 
 | Method | Path | Auth | Purpose | Key errors |
 |---|---|---|---|---|
-| GET | `/api/health` | no | Runs `SELECT 1`; used by Render's health check | |
+| GET | `/api/health` | no | Runs `SELECT 1` (process + database) | |
+| GET | `/api/health/live` | no | Process is up (no database access) | |
+| GET | `/api/health/ready` | no | Database reachable; Render's health check | |
 | POST | `/api/auth/request-code` | no | `{phone}` → `{phone}` normalized. Mock: no SMS is sent | 422 invalid number |
 | POST | `/api/auth/verify` | no | `{phone, otp}` → `{token, is_new, user}`. Logs in, or registers an unknown number | 400 wrong code |
 | POST | `/api/auth/logout` | token | Deletes the session | always 204 |
@@ -261,7 +263,7 @@ All REST paths are under `/api`. Authenticated endpoints need `Authorization: Be
 | GET | `/api/conversations` | yes | My chats with name, avatar, presence (direct), member count, unread count, last message (preview ≤ 100 chars); newest activity first | |
 | POST | `/api/conversations/direct` | yes | `{user_id}` → existing or new direct chat. Pushes `conversation:new` if created | 400 yourself, 404 unknown user |
 | POST | `/api/conversations/groups` | yes | `{name, member_ids}` → new group, creator is admin, one transaction. Pushes `conversation:new` | 400 no other members, 404 unknown user, 422 name not 1-50 chars |
-| GET | `/api/conversations/{id}/messages` | member | Full history, oldest first; `status` set on my own messages | 404 not a member |
+| GET | `/api/conversations/{id}/messages` | member | History, oldest first; `status` set on my own messages. With `?limit=` (≤100) and optional `&before_id=`: one page `{messages, has_more, next_before_id}` (the app loads 50 at a time and fetches older pages on scroll); without them: the full list | 404 not a member |
 | GET | `/api/conversations/{id}/members` | member | Members with role and online flag, admins first | 404 not a member |
 | POST | `/api/conversations/{id}/members` | admin | `{user_ids}` → add members (existing ones skipped); returns the member list. Pushes `member:update` | 404 not a member / unknown user, 400 direct chat, 403 not admin |
 | DELETE | `/api/conversations/{id}/members/{user_id}` | admin, or self | Remove a member, or leave (own id). Pushes `member:update` and `receipt:update` | 404 not a member / target not a member, 400 direct chat, 403 not admin |
@@ -383,7 +385,6 @@ Why this split:
 - **Groups.** Members added later see the whole history (none of it counts as unread). No group avatars, no promote-to-admin action (the last admin leaving auto-promotes someone). A removed member's old messages stay in the history.
 - **A direct chat appears for the other person as soon as it is opened**, before the first message (Signal waits for a message).
 - **Search** filters the loaded conversation list by chat name and the last message's first 100 characters; there is no full message-history search. New chat search finds people.
-- **No pagination.** A chat's full history is loaded when it is opened.
 - **Presence edge cases.** On a backend restart, `last_seen_at` is not written for connections that were cut.
 - **Usernames are not supported**: sign-in is phone-only (the `users.username` column exists but is unused).
 - **Settings**: Privacy, Linked devices and notification sound are placeholders; read receipts, typing indicators and online status are always on. Theme and notification choices are saved per browser (`localStorage`), not per account.
