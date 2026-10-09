@@ -6,29 +6,40 @@ import Avatar from "@/components/Avatar";
 import type { User } from "@/types";
 import styles from "./NavRail.module.css";
 
+export type Tab = "chats" | "calls" | "stories" | "settings";
+
 type Props = {
   me: User;
+  tab: Tab;
+  onTab: (tab: Tab) => void;
   onLogout: () => void;
 };
 
-// Signal's far-left tab bar. Only Chats exists for now; Calls/Stories/Settings come later.
-export default function NavRail({ me, onLogout }: Props) {
+// Signal's far-left tab bar. Calls and Stories are "Coming soon" placeholders.
+export default function NavRail({ me, tab, onTab, onLogout }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const tabProps = (id: Tab, label: string) => ({
+    className: `${styles.tab} ${tab === id ? styles.active : ""}`,
+    title: label,
+    "aria-label": label,
+    "aria-current": tab === id ? ("page" as const) : undefined,
+    onClick: () => onTab(id),
+  });
 
   return (
     <nav className={styles.rail}>
-      <button className={`${styles.tab} ${styles.active}`} title="Chats" aria-label="Chats">
+      <button {...tabProps("chats", "Chats")}>
         <MessageCircle size={20} />
       </button>
-      <button className={styles.tab} title="Calls" aria-label="Calls">
+      <button {...tabProps("calls", "Calls")}>
         <Phone size={20} />
       </button>
-      <button className={styles.tab} title="Stories" aria-label="Stories">
+      <button {...tabProps("stories", "Stories")}>
         <CircleDashed size={20} />
       </button>
 
       <div className={styles.bottom}>
-        <button className={styles.tab} title="Settings" aria-label="Settings">
+        <button {...tabProps("settings", "Settings")}>
           <Settings size={20} />
         </button>
         <button className={styles.me} title={me.display_name} onClick={() => setMenuOpen(!menuOpen)}>

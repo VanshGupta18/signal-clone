@@ -9,8 +9,31 @@
   background: #ffffff;
 }
 
-.text {
+.title {
   flex: 1;
+  min-width: 0;
+  padding: 4px 8px 4px 4px;
+  margin-left: -4px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title:enabled {
+  cursor: pointer;
+}
+
+.title:enabled:hover {
+  background: #f0f0f0;
+}
+
+.text {
   min-width: 0;
 }
 

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import close_db, get_db, init_db
 from app import websocket
-from app.routers import auth, conversations, users
+from app.routers import auth, contacts, conversations, users
 
 
 class RedactTokens(logging.Filter):
@@ -45,6 +45,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(contacts.router)
 app.include_router(conversations.router)
 app.include_router(websocket.router)
 

@@ -6,6 +6,19 @@ export type User = {
   last_seen_at: string | null;
 };
 
+// GET /api/contacts, GET /api/users/search
+export type Person = User & { is_contact: boolean };
+
+// GET /api/conversations/{id}/members
+export type Member = {
+  id: number;
+  display_name: string;
+  avatar_url: string | null;
+  phone: string;
+  role: "admin" | "member";
+  online: boolean;
+};
+
 // "sending" and "failed" exist only in the browser (not yet acked by the server);
 // the rest are server receipt statuses.
 export type MessageStatus = "sending" | "failed" | "sent" | "delivered" | "read";
@@ -50,9 +63,10 @@ export type ClientEvent =
   | { type: "message:delivered"; message_ids?: number[]; up_to_id?: number }
   | { type: "conversation:read" | "typing:start" | "typing:stop"; conversation_id: number };
 
-// WebSocket: server -> client. "socket:open" is local: lib/socket.ts emits it on every (re)connect.
+// WebSocket: server -> client. "socket:open"/"socket:close" are local: lib/socket.ts emits them
+// on every (re)connect / drop.
 export type ServerEvent =
-  | { type: "socket:open" }
+  | { type: "socket:open" | "socket:close" }
   | { type: "message:ack"; client_id: string; message: Message }
   | { type: "message:new"; message: Message }
   // Recomputed ticks of my messages (lowest status across recipients, computed by the server).
@@ -60,4 +74,8 @@ export type ServerEvent =
   | { type: "conversation:read"; conversation_id: number } // I read it (maybe in another tab)
   | { type: "typing:start" | "typing:stop"; conversation_id: number; user_id: number }
   | { type: "presence:update"; user_id: number; online: boolean; last_seen_at: string | null }
+  // A chat I'm in was created / its members changed (I may have been removed): reload the list.
+  | { type: "conversation:new"; conversation_id: number }
+  // actor_id / added_user_ids / removed_user_id only choose the toast text.
+  | { type: "member:update"; conversation_id: number; actor_id: number; added_user_ids?: number[]; removed_user_id?: number }
   | { type: "error"; client_id: string | null; detail: string };

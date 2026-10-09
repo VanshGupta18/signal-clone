@@ -46,6 +46,7 @@ export function connect() {
       expireSession(); // reconnecting with this token would never succeed
       return;
     }
+    listeners.forEach((listener) => listener({ type: "socket:close" }));
     // Exponential backoff: 1s, 2s, 4s, 8s, 10s, 10s ..., reset once a connection opens.
     retryTimer = setTimeout(connect, retryMs);
     retryMs = Math.min(retryMs * 2, MAX_RETRY_MS);

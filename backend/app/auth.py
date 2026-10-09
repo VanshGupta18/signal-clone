@@ -5,7 +5,7 @@ import turso
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.database import get_db
+from app.database import db, get_db
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -35,6 +35,17 @@ def get_current_user(
 ) -> turso.Row:
     """The only way a handler learns who the caller is: from the session token, never from the request body."""
     user = user_for_token(conn, credentials.credentials) if credentials else None
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+def get_current_user_released(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> turso.Row:
+    """Same check, but the DB lock is released as soon as the user is known. For async
+    handlers that push WebSocket events: they run their DB work in a thread with
+    `with db()` and must not hold the lock (via get_db) while awaiting sockets."""
+    with db() as conn:
+        user = user_for_token(conn, credentials.credentials) if credentials else None
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user

@@ -67,3 +67,17 @@
     transform: translateY(-3px);
   }
 }
+
+.encryption {
+  margin: 8px auto 16px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #f6f6f6;
+  font-size: 12px;
+  color: #5e5e5e;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

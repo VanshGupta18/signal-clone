@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
+import { Lock } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import MessageBubble from "@/components/MessageBubble";
 import { formatDay, isSameDay } from "@/lib/time";
@@ -39,6 +40,7 @@ export default function MessageList({ messages, myId, isGroup, typingUserIds, on
   return (
     <div className={styles.scroller} ref={scroller}>
       <div className={styles.list}>
+        <EncryptionNotice />
         {messages.map((message, i) => {
           const prev = messages[i - 1];
           const next = messages[i + 1];
@@ -75,5 +77,14 @@ export default function MessageList({ messages, myId, isGroup, typingUserIds, on
         )}
       </div>
     </div>
+  );
+}
+
+// Where Signal says "Messages are end-to-end encrypted". We don't encrypt, so we say so (D80).
+export function EncryptionNotice() {
+  return (
+    <p className={styles.encryption}>
+      <Lock size={12} /> Encryption is simulated in this demo. Messages are not end-to-end encrypted.
+    </p>
   );
 }

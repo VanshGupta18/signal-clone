@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Camera, MessageCircle } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import { api, getToken, setToken } from "@/lib/api";
+import { resizeToDataUrl } from "@/lib/image";
 import type { User } from "@/types";
 import styles from "./login.module.css";
 
@@ -167,17 +168,4 @@ export default function LoginPage() {
       </div>
     </main>
   );
-}
-
-// Center-crops and scales an image to size x size, returned as a small JPEG data URL.
-async function resizeToDataUrl(file: File, size: number): Promise<string> {
-  const bitmap = await createImageBitmap(file);
-  const side = Math.min(bitmap.width, bitmap.height);
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  canvas
-    .getContext("2d")!
-    .drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
-  return canvas.toDataURL("image/jpeg", 0.85);
 }

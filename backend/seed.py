@@ -14,6 +14,7 @@ USERS = {
     "bob": ("+15550000002", "Bob Smith"),
     "carol": ("+15550000003", "Carol Diaz"),
     "dave": ("+15550000004", "Dave Patel"),
+    "eve": ("+15550000005", "Eve Moreau"),  # nobody's contact, in no chats: demo "New chat" search + Add contact
 }
 
 # messages: (sender, text, minutes_ago). unread: member -> how many of the last
@@ -70,9 +71,10 @@ def seed(conn) -> None:
     for key, (phone, name) in USERS.items():
         ids[key] = conn.execute("INSERT INTO users (phone, display_name) VALUES (?, ?)", (phone, name)).lastrowid
 
-    # Everyone has everyone else as a contact.
-    for a in ids.values():
-        for b in ids.values():
+    # Everyone except Eve has everyone else (except Eve) as a contact.
+    regulars = [user_id for key, user_id in ids.items() if key != "eve"]
+    for a in regulars:
+        for b in regulars:
             if a != b:
                 conn.execute("INSERT INTO contacts (user_id, contact_user_id) VALUES (?, ?)", (a, b))
 

@@ -67,3 +67,18 @@ def test_opening_messages_does_not_change_unread(client, seeded):
     convs = client.get("/api/conversations", headers=auth_header(token)).json()
     client.get(f"/api/conversations/{convs[1]['id']}/messages", headers=auth_header(token))
     assert client.get("/api/conversations", headers=auth_header(token)).json()[1]["unread_count"] == 2
+
+
+def test_list_preview_is_trimmed_but_history_is_not(client, seeded):
+    token = login(client, ALICE)["token"]
+    convs = client.get("/api/conversations", headers=auth_header(token)).json()
+    bob_chat = next(c["id"] for c in convs if c["name"] == "Bob Smith")
+    long_text = "x" * 250
+    with client.websocket_connect(f"/ws?token={token}") as ws:
+        ws.send_json({"type": "message:send", "conversation_id": bob_chat, "content": long_text, "client_id": "long-1"})
+        while (event := ws.receive_json())["type"] != "message:ack":
+            pass
+    convs = client.get("/api/conversations", headers=auth_header(token)).json()
+    assert convs[0]["id"] == bob_chat and convs[0]["last_message"]["content"] == "x" * 100
+    history = client.get(f"/api/conversations/{bob_chat}/messages", headers=auth_header(token)).json()
+    assert history[-1]["content"] == long_text
