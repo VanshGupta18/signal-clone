@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CircleDashed, LogOut, MessageCircle, Phone, Settings } from "lucide-react";
+import { CircleDashed, CircleHelp, LogOut, MessageCircle, Phone, Settings } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import type { User } from "@/types";
 import styles from "./NavRail.module.css";
@@ -13,10 +13,11 @@ type Props = {
   tab: Tab;
   onTab: (tab: Tab) => void;
   onLogout: () => void;
+  onDemoGuide: () => void;
 };
 
 // Signal's far-left tab bar. Calls and Stories are "Coming soon" placeholders.
-export default function NavRail({ me, tab, onTab, onLogout }: Props) {
+export default function NavRail({ me, tab, onTab, onLogout, onDemoGuide }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const tabProps = (id: Tab, label: string) => ({
     className: `${styles.tab} ${tab === id ? styles.active : ""}`,
@@ -39,6 +40,14 @@ export default function NavRail({ me, tab, onTab, onLogout }: Props) {
       </button>
 
       <div className={styles.bottom}>
+        <button
+          className={styles.tab}
+          title="Demo guide"
+          aria-label="Demo guide"
+          onClick={onDemoGuide}
+        >
+          <CircleHelp size={20} />
+        </button>
         <button {...tabProps("settings", "Settings")}>
           <Settings size={20} />
         </button>

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, ValidationError
 from app.auth import user_for_token
 from app.database import db, push_pending
 from app.messages import (
-    NOW, mark_delivered, mark_read, member_ids, peer_ids, require_member, send_message, tick_updates,
+    NOW, mark_delivered, mark_read, member_ids, peer_ids, require_member, send_message, set_reaction, tick_updates,
 )
 
 router = APIRouter()
@@ -54,6 +54,12 @@ class SendIn(BaseModel):
     conversation_id: int
     content: str
     client_id: str = Field(min_length=1, max_length=100)
+    reply_to_id: int | None = None
+
+
+class ReactionIn(BaseModel):
+    message_id: int
+    emoji: str | None  # null = remove my reaction
 
 
 class DeliveredIn(BaseModel):
@@ -97,7 +103,7 @@ def handle_event(user_id: int, text: str) -> tuple[dict | None, list]:
         if kind == "message:send":
             body = SendIn.model_validate(event)
             with db(push_now=False) as conn:  # acked before the Turso push (D84)
-                message, created = send_message(conn, user_id, body.conversation_id, body.content, body.client_id)
+                message, created = send_message(conn, user_id, body.conversation_id, body.content, body.client_id, body.reply_to_id)
                 # A retry of a saved message (created=False) is only re-acked: everyone already got message:new.
                 members = member_ids(conn, body.conversation_id) if created else []
             # Ack first (reply), then message:new to the other members and my other tabs.
@@ -120,6 +126,16 @@ def handle_event(user_id: int, text: str) -> tuple[dict | None, list]:
             # Tell all my tabs (this one too) so they reload the list and the badge clears.
             done = {"type": "conversation:read", "conversation_id": body.conversation_id}
             return done, [([user_id], done), *pushes]
+
+        if kind == "reaction:set":
+            body = ReactionIn.model_validate(event)
+            with db(push_now=False) as conn:
+                conversation_id, reactions = set_reaction(conn, user_id, body.message_id, body.emoji)
+                members = member_ids(conn, conversation_id)
+            # To every member, my other tabs included; this tab gets the same event as its reply.
+            update = {"type": "reaction:update", "message_id": body.message_id,
+                      "conversation_id": conversation_id, "reactions": reactions}
+            return update, [(members, update)]
 
         if kind in ("typing:start", "typing:stop"):
             body = ConversationIn.model_validate(event)

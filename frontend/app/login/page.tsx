@@ -11,6 +11,16 @@ import styles from "./login.module.css";
 
 type Step = "phone" | "code" | "profile";
 
+// The users backend/seed.py creates, for one-click demo logins. Keep in sync with seed.py.
+const DEMO_ACCOUNTS = [
+  { phone: "+15550000001", name: "Alice Johnson", note: "admin of Weekend Hike, has unread chats" },
+  { phone: "+15550000002", name: "Bob Smith", note: "chats with Alice" },
+  { phone: "+15550000003", name: "Carol Diaz", note: "chats with Alice" },
+  { phone: "+15550000004", name: "Dave Patel", note: "group only" },
+  { phone: "+15550000005", name: "Eve Moreau", note: "no contacts yet" },
+];
+const MOCK_OTP = "123456"; // backend accepts only this code (mock verification)
+
 export default function LoginPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("phone");
@@ -48,6 +58,8 @@ export default function LoginPage() {
         body: JSON.stringify({ phone }),
       });
       setPhone(res.phone); // normalized by the server, e.g. "+919876543210"
+      // Demo accounts: pre-fill the (public) mock code so the demo login is one click.
+      if (DEMO_ACCOUNTS.some((a) => a.phone === res.phone)) setCode(MOCK_OTP);
       setStep("code");
     });
   }
@@ -101,6 +113,19 @@ export default function LoginPage() {
               autoFocus
               required
             />
+            <select
+              className={styles.demoSelect}
+              aria-label="Demo accounts"
+              value={DEMO_ACCOUNTS.some((a) => a.phone === phone) ? phone : ""}
+              onChange={(e) => { setPhone(e.target.value); setError(""); }}
+            >
+              <option value="" disabled>Demo accounts…</option>
+              {DEMO_ACCOUNTS.map((a) => (
+                <option key={a.phone} value={a.phone}>
+                  {a.name} ({a.phone}) · {a.note}
+                </option>
+              ))}
+            </select>
             {error && <p className={styles.error}>{error}</p>}
             <button className={styles.button} disabled={busy || !phone.trim()}>Next</button>
           </form>

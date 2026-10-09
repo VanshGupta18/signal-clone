@@ -5,8 +5,8 @@
   padding: 0;
   border: none;
   border-radius: 12px;
-  background: #ffffff;
-  color: #1b1b1b;
+  background: var(--dialog-bg);
+  color: var(--text);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
 }
 
@@ -38,7 +38,7 @@
   border: none;
   border-radius: 6px;
   background: none;
-  color: #5e5e5e;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -46,7 +46,7 @@
 }
 
 .close:hover {
-  background: #e9e9e9;
+  background: var(--hover);
 }
 
 .body {
@@ -72,12 +72,12 @@
   font: inherit;
   font-weight: 500;
   cursor: pointer;
-  background: #e9e9e9;
-  color: #1b1b1b;
+  background: var(--hover);
+  color: var(--text);
 }
 
 .button:hover {
-  background: #dedede;
+  background: var(--selected);
 }
 
 .primary {
@@ -104,7 +104,7 @@
 }
 
 .message {
-  color: #5e5e5e;
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 

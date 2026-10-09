@@ -6,14 +6,14 @@
   padding: 0 12px;
   border: 1px solid transparent;
   border-radius: 8px;
-  background: #f0f0f0;
+  background: var(--surface);
   font: inherit;
-  color: #1b1b1b;
+  color: var(--text);
   outline: none;
 }
 
 .search:focus {
-  background: #ffffff;
+  background: var(--bg);
   border-color: #2c6bed;
 }
 
@@ -25,18 +25,18 @@
   padding: 12px 8px 4px;
   font-size: 13px;
   font-weight: 600;
-  color: #5e5e5e;
+  color: var(--text-secondary);
 }
 
 .empty {
   padding: 24px 8px;
   text-align: center;
-  color: #848484;
+  color: var(--text-tertiary);
 }
 
 .error {
   padding: 4px 8px;
-  color: #d00b0b;
+  color: var(--danger);
   font-size: 13px;
 }
 
@@ -49,7 +49,7 @@
   background: none;
   font: inherit;
   font-weight: 500;
-  color: #1b1b1b;
+  color: var(--text);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -57,7 +57,7 @@
 }
 
 .action:hover {
-  background: #f0f0f0;
+  background: var(--surface);
 }
 
 .action:disabled,
@@ -70,14 +70,14 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #e9e9e9;
+  background: var(--hover);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .dangerAction {
-  color: #d00b0b;
+  color: var(--danger);
 }
 
 .smallButton {
@@ -86,16 +86,16 @@
   padding: 0 12px;
   border: none;
   border-radius: 14px;
-  background: #e9e9e9;
+  background: var(--hover);
   font: inherit;
   font-size: 13px;
   font-weight: 500;
-  color: #1b1b1b;
+  color: var(--text);
   cursor: pointer;
 }
 
 .smallButton:hover {
-  background: #dedede;
+  background: var(--selected);
 }
 
 .iconButton {
@@ -106,7 +106,7 @@
   border: none;
   border-radius: 6px;
   background: none;
-  color: #5e5e5e;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -114,15 +114,15 @@
 }
 
 .iconButton:hover {
-  background: #e9e9e9;
-  color: #d00b0b;
+  background: var(--hover);
+  color: var(--danger);
 }
 
 .label {
   flex-shrink: 0;
   margin-right: 8px;
   font-size: 12px;
-  color: #5e5e5e;
+  color: var(--text-secondary);
 }
 
 .chips {
@@ -136,7 +136,7 @@
   height: 28px;
   padding: 0 4px 0 4px;
   border-radius: 14px;
-  background: #e3e3fe;
+  background: var(--chip);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -153,7 +153,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #1b1b1b;
+  color: var(--text);
 }
 
 .chip button:hover {
@@ -164,7 +164,7 @@
   width: 100%;
   height: 40px;
   padding: 0 12px;
-  border: 1px solid #b9b9b9;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   font: inherit;
   outline: none;
@@ -197,7 +197,7 @@
 .skeletonAvatar,
 .skeletonName,
 .skeletonPhone {
-  background: linear-gradient(90deg, #eeeeee 25%, #e5e5e5 37%, #eeeeee 63%);
+  background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-shine) 37%, var(--skeleton) 63%);
   background-size: 400% 100%;
   animation: skeletonShimmer 1.4s ease infinite;
 }
@@ -249,7 +249,7 @@
 }
 
 .muted {
-  color: #5e5e5e;
+  color: var(--text-secondary);
 }
 
 /* Safety number dialog (mock) */
@@ -257,8 +257,8 @@
   margin-bottom: 12px;
   padding: 6px 10px;
   border-radius: 8px;
-  background: #fff4d6;
-  color: #7a5600;
+  background: var(--warning-bg);
+  color: var(--warning-text);
   font-size: 13px;
   font-weight: 500;
   text-align: center;
@@ -273,4 +273,36 @@
   font-family: ui-monospace, Menlo, monospace;
   font-size: 18px;
   letter-spacing: 1px;
+}
+
+/* Keyboard shortcuts dialog */
+.shortcuts {
+  list-style: none;
+}
+
+.shortcuts li {
+  min-height: 40px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.keys {
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+}
+
+.keys kbd {
+  min-width: 24px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
 }

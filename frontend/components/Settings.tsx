@@ -1,11 +1,13 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, Bell, Camera, CircleUser, Laptop, Lock, LogOut, Palette } from "lucide-react";
+import { ArrowLeft, Bell, Camera, CircleUser, Keyboard, Laptop, Lock, LogOut, Palette } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import { toast } from "@/components/Toast";
 import { api } from "@/lib/api";
 import { resizeToDataUrl } from "@/lib/image";
+import { notificationsEnabled, notificationsSupported, setNotificationsEnabled } from "@/lib/notifications";
+import { getTheme, setTheme, type Theme } from "@/lib/theme";
 import type { User } from "@/types";
 import dialogStyles from "./Dialog.module.css";
 import listStyles from "./ConversationList.module.css";
@@ -16,6 +18,7 @@ type Props = {
   onSaved: (user: User) => void;
   onBack: () => void;
   onLogout: () => void;
+  onShowShortcuts: () => void;
 };
 
 const SECTIONS = [
@@ -29,8 +32,8 @@ const SECTIONS = [
 type Section = (typeof SECTIONS)[number]["id"];
 
 // Signal Desktop's settings screen: section list on the left, the section on the right.
-// Only Profile is functional; the rest are clearly labeled placeholders.
-export default function Settings({ me, onSaved, onBack, onLogout }: Props) {
+// Profile, Appearance and Desktop notifications work; the rest are clearly labeled placeholders.
+export default function Settings({ me, onSaved, onBack, onLogout, onShowShortcuts }: Props) {
   const [section, setSection] = useState<Section>("profile");
 
   return (
@@ -55,6 +58,9 @@ export default function Settings({ me, onSaved, onBack, onLogout }: Props) {
               <Icon size={18} /> {label}
             </button>
           ))}
+          <button className={styles.navItem} onClick={onShowShortcuts}>
+            <Keyboard size={18} /> Keyboard shortcuts
+          </button>
           <button className={`${styles.navItem} ${styles.logout}`} onClick={onLogout}>
             <LogOut size={18} /> Log out
           </button>
@@ -70,20 +76,8 @@ export default function Settings({ me, onSaved, onBack, onLogout }: Props) {
               <Toggle label="Show when you're online" hint="Always on in this demo" on />
             </Placeholder>
           )}
-          {section === "notifications" && (
-            <Placeholder title="Notifications">
-              <Toggle label="Desktop notifications" />
-              <Toggle label="Notification sound" />
-              <Toggle label="Show name and message" />
-            </Placeholder>
-          )}
-          {section === "appearance" && (
-            <Placeholder title="Appearance">
-              <Toggle label="Theme: Light" hint="The only theme for now" on />
-              <Toggle label="Theme: Dark" />
-              <Toggle label="Theme: System" />
-            </Placeholder>
-          )}
+          {section === "notifications" && <Notifications />}
+          {section === "appearance" && <Appearance />}
           {section === "devices" && (
             <Placeholder title="Linked devices">
               <p className={styles.hint}>
@@ -119,6 +113,80 @@ function Toggle({ label, hint, on = false }: { label: string; hint?: string; on?
       <span className={styles.soon}>Coming soon</span>
       <input type="checkbox" role="switch" className={styles.switch} checked={on} disabled readOnly aria-label={label} />
     </label>
+  );
+}
+
+const THEMES: { value: Theme; label: string }[] = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
+];
+
+function Appearance() {
+  const [theme, setThemeState] = useState(getTheme);
+  function choose(value: Theme) {
+    setTheme(value);
+    setThemeState(value);
+  }
+  return (
+    <>
+      <h2 className={styles.sectionTitle}>Appearance</h2>
+      <div className={styles.row} role="radiogroup" aria-label="Theme">
+        <span className={styles.rowLabel}>
+          <span>Theme</span>
+          <span className={styles.hint}>System follows your computer&apos;s light or dark setting</span>
+        </span>
+        <span className={styles.choices}>
+          {THEMES.map(({ value, label }) => (
+            <label key={value} className={styles.choice}>
+              <input type="radio" name="theme" checked={theme === value} onChange={() => choose(value)} />
+              {label}
+            </label>
+          ))}
+        </span>
+      </div>
+    </>
+  );
+}
+
+function Notifications() {
+  const supported = notificationsSupported();
+  const [on, setOn] = useState(notificationsEnabled);
+  const blocked = supported && Notification.permission === "denied";
+
+  async function toggle(next: boolean) {
+    const enabled = await setNotificationsEnabled(next);
+    setOn(enabled);
+    if (next && !enabled) toast("Notifications are blocked. Allow them in your browser's site settings.");
+  }
+
+  return (
+    <>
+      <h2 className={styles.sectionTitle}>Notifications</h2>
+      <label className={styles.row}>
+        <span className={styles.rowLabel}>
+          <span>Desktop notifications</span>
+          <span className={styles.hint}>
+            {!supported
+              ? "This browser doesn't support notifications"
+              : blocked
+                ? "Blocked in your browser's site settings"
+                : "New messages while a chat isn't open on screen"}
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          className={styles.switch}
+          checked={on}
+          disabled={!supported}
+          onChange={(e) => toggle(e.target.checked)}
+          aria-label="Desktop notifications"
+        />
+      </label>
+      <Toggle label="Notification sound" />
+      <Toggle label="Show name and message" hint="Always shown in this demo" on />
+    </>
   );
 }
 
@@ -166,25 +234,38 @@ function Profile({ me, onSaved }: { me: User; onSaved: (user: User) => void }) {
           if (changed && name.trim() && !busy) save();
         }}
       >
-        <button
-          type="button"
-          className={styles.avatarButton}
-          onClick={() => fileInput.current?.click()}
-          aria-label="Change profile photo"
-          title="Change profile photo"
-        >
+        <div className={styles.avatarEditor}>
           <Avatar name={name || "?"} src={avatar} colorSeed={me.id} size={80} />
-          <span className={styles.cameraBadge}>
+          <button
+            type="button"
+            className={styles.cameraBadge}
+            onClick={() => fileInput.current?.click()}
+            aria-label="Choose profile photo"
+            title="Choose profile photo"
+          >
             <Camera size={16} />
-          </span>
-        </button>
+          </button>
+        </div>
         <input
           ref={fileInput}
           type="file"
           accept="image/png,image/jpeg,image/webp"
           hidden
-          onChange={(e) => pickAvatar(e.target.files?.[0])}
+          onChange={(e) => {
+            void pickAvatar(e.target.files?.[0]);
+            e.currentTarget.value = "";
+          }}
         />
+        {avatar && (
+          <button
+            type="button"
+            className={styles.removePhoto}
+            onClick={() => setAvatar(null)}
+            disabled={busy}
+          >
+            Remove photo
+          </button>
+        )}
         <label className={styles.field}>
           Name
           <input

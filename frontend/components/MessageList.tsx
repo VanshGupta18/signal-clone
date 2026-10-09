@@ -1,9 +1,10 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Lock } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import MessageBubble from "@/components/MessageBubble";
+import { toast } from "@/components/Toast";
 import { formatDay, isSameDay } from "@/lib/time";
 import type { Message } from "@/types";
 import styles from "./MessageList.module.css";
@@ -16,6 +17,8 @@ type Props = {
   isGroup: boolean;
   typingUserIds: number[]; // others typing in this chat
   onRetry: (message: Message) => void;
+  onReply: (message: Message) => void;
+  onReact: (message: Message, emoji: string) => void;
   onLoadOlder?: () => void;
   hasOlder?: boolean;
   loadingOlder?: boolean;
@@ -32,8 +35,23 @@ function sameRun(a: Message | undefined, b: Message | undefined): boolean {
   );
 }
 
-export default function MessageList({ messages, myId, isGroup, typingUserIds, onRetry, onLoadOlder, hasOlder, loadingOlder }: Props) {
+export default function MessageList({
+  messages, myId, isGroup, typingUserIds, onRetry, onReply, onReact, onLoadOlder, hasOlder, loadingOlder,
+}: Props) {
   const scroller = useRef<HTMLDivElement>(null);
+  const [highlightedId, setHighlightedId] = useState<number | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Clicking a quote scrolls to the original and pulses it. Only loaded messages can be
+  // found; older ones would need paging back to them (D97).
+  function jumpTo(id: number) {
+    const element = document.getElementById(`message-${id}`);
+    if (!element) return toast("The original message isn't loaded. Scroll up to find it.");
+    element.scrollIntoView({ block: "center", behavior: "smooth" });
+    clearTimeout(highlightTimer.current);
+    setHighlightedId(id);
+    highlightTimer.current = setTimeout(() => setHighlightedId(null), 1600);
+  }
   const initialScroll = useRef(true);
   const previousHeight = useRef(0);
   const previousCount = useRef(-1);
@@ -75,11 +93,15 @@ export default function MessageList({ messages, myId, isGroup, typingUserIds, on
               {newDay && <div className={styles.day}>{formatDay(message.created_at)}</div>}
               <MessageBubble
                 message={message}
-                isOwn={message.sender_id === myId}
+                myId={myId}
                 isGroup={isGroup}
                 joinsPrev={!newDay && sameRun(prev, message)}
                 joinsNext={sameRun(message, next)}
+                highlighted={message.id === highlightedId}
                 onRetry={() => onRetry(message)}
+                onReply={() => onReply(message)}
+                onReact={(emoji) => onReact(message, emoji)}
+                onJumpToQuote={jumpTo}
               />
             </div>
           );

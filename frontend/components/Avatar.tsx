@@ -15,8 +15,11 @@ const COLORS = [
 ];
 
 // Text color for a seed, e.g. to color a sender's name in a group like Signal does.
+// CSS light-dark() picks the dark initials color in light mode and the pastel in dark mode
+// (it follows the color-scheme set in globals.css), so the name stays readable in both.
 export function avatarTextColor(colorSeed: number): string {
-  return COLORS[Math.abs(colorSeed) % COLORS.length][1];
+  const [pastel, dark] = COLORS[Math.abs(colorSeed) % COLORS.length];
+  return `light-dark(${dark}, ${pastel})`;
 }
 
 type Props = {

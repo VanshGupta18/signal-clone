@@ -18,7 +18,7 @@
   padding: 3px 6px;
   border: 1px solid transparent;
   border-radius: 18px;
-  background: #f0f0f0;
+  background: var(--surface);
   display: flex;
   align-items: flex-end;
   gap: 4px;
@@ -26,7 +26,7 @@
 
 .inputWrap:focus-within {
   border-color: #2c6bed;
-  background: #ffffff;
+  background: var(--bg);
 }
 
 .input {
@@ -37,7 +37,7 @@
   padding: 5px 0;
   font: inherit;
   line-height: 20px;
-  color: #1b1b1b;
+  color: var(--text);
   outline: none;
   resize: none;
   field-sizing: content; /* grows with the text (Chromium/Safari) ... */
@@ -45,7 +45,44 @@
 }
 
 .input::placeholder {
-  color: #848484;
+  color: var(--text-tertiary);
+}
+
+.emojiPicker {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.emojiMenu {
+  position: absolute;
+  z-index: 10;
+  left: -6px;
+  bottom: 38px;
+  width: min(280px, calc(100vw - 32px));
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--dialog-bg);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+}
+
+.emoji {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.emoji:hover,
+.emoji:focus-visible {
+  background: var(--hover);
 }
 
 .inlineIcon,
@@ -56,7 +93,7 @@
   border: none;
   border-radius: 50%;
   background: none;
-  color: #5e5e5e;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -69,7 +106,7 @@
 }
 
 .iconButton:hover {
-  background: #e9e9e9;
+  background: var(--hover);
 }
 
 .send {
@@ -88,4 +125,41 @@
 
 .send:hover {
   background: #1851b4;
+}
+
+/* "Replying to" bar above the input: Signal's quote box + a close button. */
+.quoteBar {
+  flex-shrink: 0;
+  margin: 0 16px -4px;
+  padding: 8px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quote {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border-left: 4px solid;
+  border-radius: 4px 10px 10px 4px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.quoteName {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.quoteText {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-secondary);
 }

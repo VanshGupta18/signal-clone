@@ -53,6 +53,7 @@ export default function ConversationList({
         <Search size={16} className={styles.searchIcon} />
         <input
           ref={input}
+          id="chat-search"
           className={styles.searchInput}
           placeholder="Search"
           value={query}

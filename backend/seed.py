@@ -19,6 +19,7 @@ USERS = {
 
 # messages: (sender, text, minutes_ago). unread: member -> how many of the last
 # messages they haven't read yet (those must be from other people).
+# replies: message index -> index of the message it quotes. reactions: (message index, member, emoji).
 CONVERSATIONS = [
     {
         "type": "direct",
@@ -32,6 +33,8 @@ CONVERSATIONS = [
             ("alice", "Thanks! Let me know if anything feels off", 88),
         ],
         "unread": {},
+        "replies": {4: 3},  # "Just did, ..." quotes "Did you see the new design mockups?"
+        "reactions": [(4, "alice", "❤️")],
     },
     {
         "type": "direct",
@@ -58,6 +61,7 @@ CONVERSATIONS = [
             ("dave", "8 works. I'll bring snacks", 10),
         ],
         "unread": {"alice": 1, "carol": 2},
+        "reactions": [(3, "bob", "👍"), (3, "dave", "👍"), (1, "alice", "😂")],
     },
 ]
 
@@ -95,11 +99,17 @@ def seed(conn) -> None:
             ).lastrowid
 
         message_ids = []
-        for sender, text, minutes_ago in conv["messages"]:
+        for i, (sender, text, minutes_ago) in enumerate(conv["messages"]):
+            quoted = conv.get("replies", {}).get(i)
             message_ids.append(conn.execute(
-                "INSERT INTO messages (conversation_id, sender_id, client_id, content, created_at) VALUES (?, ?, ?, ?, ?)",
-                (conv_id, ids[sender], str(uuid.uuid4()), text, iso(minutes_ago)),
+                "INSERT INTO messages (conversation_id, sender_id, client_id, content, created_at, reply_to_id) VALUES (?, ?, ?, ?, ?, ?)",
+                (conv_id, ids[sender], str(uuid.uuid4()), text, iso(minutes_ago), None if quoted is None else message_ids[quoted]),
             ).lastrowid)
+        for i, member, emoji in conv.get("reactions", []):
+            conn.execute(
+                "INSERT INTO message_reactions (message_id, user_id, emoji, created_at) VALUES (?, ?, ?, ?)",
+                (message_ids[i], ids[member], emoji, iso(conv["messages"][i][2] - 1)),
+            )
 
         for member in conv["members"]:
             unread = conv["unread"].get(member, 0)
@@ -132,7 +142,7 @@ def main() -> None:
         if "--reset" in sys.argv or not already_seeded:
             with conn:  # one transaction: a failed seed leaves the DB untouched
                 # Delete children before parents so foreign keys are never violated.
-                for table in ["message_receipts", "messages", "conversation_members", "conversations", "contacts", "sessions", "users"]:
+                for table in ["message_reactions", "message_receipts", "messages", "conversation_members", "conversations", "contacts", "sessions", "users"]:
                     conn.execute(f"DELETE FROM {table}")
                 seed(conn)
     close_db()

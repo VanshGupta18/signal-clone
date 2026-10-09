@@ -55,7 +55,13 @@ export type Message = {
   content: string;
   created_at: string;
   status: MessageStatus | null; // only set on my own messages
+  reply_to: QuotedMessage | null; // the message this one replies to
+  reactions: Reaction[];
 };
+// A quoted message, as carried inside the reply (content trimmed to 100 chars by the server).
+export type QuotedMessage = { id: number; sender_id: number; sender_name: string; content: string };
+// One emoji on a message and who reacted with it (one reaction per person per message).
+export type Reaction = { emoji: string; user_ids: number[]; names: string[] };
 export type MessagePage = {
   messages: Message[];
   has_more: boolean;
@@ -63,10 +69,12 @@ export type MessagePage = {
 };
 
 // WebSocket: client -> server
-export type SendPayload = { conversation_id: number; content: string; client_id: string };
+export type SendPayload = { conversation_id: number; content: string; client_id: string; reply_to_id?: number };
 export type ClientEvent =
   | { type: "message:delivered"; message_ids?: number[]; up_to_id?: number }
-  | { type: "conversation:read" | "typing:start" | "typing:stop"; conversation_id: number };
+  | { type: "conversation:read" | "typing:start" | "typing:stop"; conversation_id: number }
+  // My reaction: a new emoji adds/replaces it, my current emoji or null removes it.
+  | { type: "reaction:set"; message_id: number; emoji: string | null };
 
 // WebSocket: server -> client. Socket lifecycle events are local: lib/socket.ts emits them.
 // on every (re)connect / drop.
@@ -76,6 +84,7 @@ export type ServerEvent =
   | { type: "message:new"; message: Message }
   // Recomputed ticks of my messages (lowest status across recipients, computed by the server).
   | { type: "receipt:update"; messages: { id: number; conversation_id: number; status: MessageStatus }[] }
+  | { type: "reaction:update"; message_id: number; conversation_id: number; reactions: Reaction[] }
   | { type: "conversation:read"; conversation_id: number } // I read it (maybe in another tab)
   | { type: "typing:start" | "typing:stop"; conversation_id: number; user_id: number }
   | { type: "presence:update"; user_id: number; online: boolean; last_seen_at: string | null }

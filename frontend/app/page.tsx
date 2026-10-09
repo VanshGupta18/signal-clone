@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import { MessageCircle } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import ChatHeader from "@/components/ChatHeader";
 import ComingSoon from "@/components/ComingSoon";
 import ConversationList from "@/components/ConversationList";
+import DemoGuide from "@/components/DemoGuide";
 import GroupDetails from "@/components/GroupDetails";
 import MessageComposer from "@/components/MessageComposer";
 import MessageList, { EncryptionNotice } from "@/components/MessageList";
@@ -14,8 +16,11 @@ import NavRail, { type Tab } from "@/components/NavRail";
 import NewChatDialog from "@/components/NewChatDialog";
 import SafetyNumberDialog from "@/components/SafetyNumberDialog";
 import Settings from "@/components/Settings";
+import ShortcutsDialog from "@/components/ShortcutsDialog";
 import Toaster, { toast } from "@/components/Toast";
 import { api, clearToken, getToken } from "@/lib/api";
+import { showNotification } from "@/lib/notifications";
+import { useShortcuts } from "@/lib/shortcuts";
 import { connect, disconnect, sendEvent, sendMessage, subscribe } from "@/lib/socket";
 import type { Conversation, Message, MessagePage, ServerEvent, User } from "@/types";
 import styles from "./page.module.css";
@@ -28,6 +33,14 @@ type Typing = { conversation_id: number; user_id: number };
 const loadList = () => api<Conversation[]>("/api/conversations");
 const loadMessages = (id: number, beforeId?: number, signal?: AbortSignal) =>
   api<MessagePage>(`/api/conversations/${id}/messages?limit=50${beforeId ? `&before_id=${beforeId}` : ""}`, { signal });
+
+// A history page is a snapshot from when the request ran. A message acked or received for that
+// chat while the request was in flight has a higher id than the page's last one: keep it instead
+// of wiping it off the screen (it would only come back after a reload).
+function withNewer(conversationId: number, page: Message[], current: Message[]): Message[] {
+  const lastId = page.length ? page[page.length - 1].id : 0;
+  return [...page, ...current.filter((m) => m.conversation_id === conversationId && m.id > lastId)];
+}
 
 // Read = I'm actually looking at it: the chat is open and the tab is visible.
 function markRead(conversationId: number) {
@@ -54,6 +67,7 @@ export default function Home() {
   // My messages not yet acked by the server ("sending"/"failed"), across all chats,
   // so switching chats doesn't lose them.
   const [pending, setPending] = useState<Message[]>([]);
+  const [replyTo, setReplyTo] = useState<Message | null>(null); // quote bar in the composer
   const [error, setError] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "offline">("connecting");
   const [typing, setTyping] = useState<Typing[]>([]); // who is typing where (others only)
@@ -63,6 +77,8 @@ export default function Home() {
   const [showNewChat, setShowNewChat] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [showSafety, setShowSafety] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showDemoGuide, setShowDemoGuide] = useState(false);
   // Latest list, for toast texts that need a chat name after it left the list.
   const conversationsRef = useRef<Conversation[]>([]);
   useEffect(() => {
@@ -98,7 +114,7 @@ export default function Home() {
     const controller = new AbortController();
     loadMessages(openId, undefined, controller.signal)
       .then((page) => {
-        setMessages(page.messages);
+        setMessages((current) => withNewer(openId, page.messages, current));
         setHistoryCursor(page.next_before_id);
         setHasOlder(page.has_more);
       })
@@ -119,7 +135,7 @@ export default function Home() {
     setLoadingMessages(true);
     loadMessages(openId)
       .then((page) => {
-        setMessages(page.messages);
+        setMessages((current) => withNewer(openId, page.messages, current));
         setHistoryCursor(page.next_before_id);
         setHasOlder(page.has_more);
       })
@@ -235,7 +251,7 @@ export default function Home() {
             .catch(() => {});
           if (openId !== null) {
             loadMessages(openId).then((page) => {
-              setMessages(page.messages);
+              setMessages((current) => withNewer(openId, page.messages, current));
               setHistoryCursor(page.next_before_id);
               setHasOlder(page.has_more);
             }).catch(() => {});
@@ -262,9 +278,24 @@ export default function Home() {
             setMessages((list) => (list.some((m) => m.id === message.id) ? list : [...list, message]));
             if (message.sender_id !== myId) markRead(openId);
           }
+          // Desktop notification, unless it's mine or I'm looking at that chat right now.
+          const onScreen = message.conversation_id === openId && document.visibilityState === "visible";
+          if (message.sender_id !== myId && !onScreen) {
+            const chat = conversationsRef.current.find((c) => c.id === message.conversation_id);
+            const isGroup = chat?.type === "group";
+            showNotification(
+              isGroup ? chat.name : message.sender_name,
+              isGroup ? `${message.sender_name}: ${message.content}` : message.content,
+              message.conversation_id,
+              () => openFromNotification.current(message.conversation_id),
+            );
+          }
           reloadList();
           break;
         }
+        case "reaction:update": // someone (maybe me in another tab) reacted in a chat I'm in
+          setMessages((list) => list.map((m) => (m.id === event.message_id ? { ...m, reactions: event.reactions } : m)));
+          break;
         case "receipt:update":
           setMessages((list) =>
             list.map((m) => {
@@ -333,15 +364,34 @@ export default function Home() {
       content,
       created_at: new Date().toISOString(),
       status: "sending",
+      reply_to: replyTo && {
+        id: replyTo.id,
+        sender_id: replyTo.sender_id,
+        sender_name: replyTo.sender_name,
+        content: replyTo.content.slice(0, 100),
+      },
+      reactions: [],
     };
     setPending((list) => [...list, message]);
-    sendMessage({ conversation_id: message.conversation_id, content, client_id: message.client_id });
+    setReplyTo(null);
+    sendMessage({ conversation_id: message.conversation_id, content, client_id: message.client_id, reply_to_id: replyTo?.id });
+  }
+
+  // The server decides: a new emoji adds/replaces mine, my current one toggles it off.
+  // Fire-and-forget: the pill changes when reaction:update comes back (offline = nothing happens).
+  function react(message: Message, emoji: string) {
+    sendEvent({ type: "reaction:set", message_id: message.id, emoji });
   }
 
   // Same client_id, so the server can never store it twice.
   function retry(message: Message) {
     setPending((list) => list.map((m) => (m.client_id === message.client_id ? { ...m, status: "sending" } : m)));
-    sendMessage({ conversation_id: message.conversation_id, content: message.content, client_id: message.client_id });
+    sendMessage({
+      conversation_id: message.conversation_id,
+      content: message.content,
+      client_id: message.client_id,
+      reply_to_id: message.reply_to?.id,
+    });
   }
 
   function select(id: number) {
@@ -353,11 +403,39 @@ export default function Home() {
     setHasOlder(false);
     setShowDetails(false);
     setShowSafety(false);
+    setReplyTo(null);
     setSelectedId(id);
   }
 
+  // Clicking a notification opens its chat (a ref: the socket handler above outlives renders).
+  const openFromNotification = useRef<(id: number) => void>(() => {});
+  useEffect(() => {
+    openFromNotification.current = (id: number) => {
+      setTab("chats");
+      select(id);
+    };
+  });
+
+  // Keyboard shortcuts (lib/shortcuts.ts). Alt+↑/↓ walk the list in its on-screen order.
+  useShortcuts((action) => {
+    if (action === "newChat") setShowNewChat(true);
+    if (action === "settings") setTab("settings");
+    if (action === "shortcuts") setShowShortcuts(true);
+    if (action === "search") {
+      flushSync(() => setTab("chats")); // render the list first so its search box exists
+      document.getElementById("chat-search")?.focus();
+    }
+    if ((action === "previousChat" || action === "nextChat") && tab === "chats" && conversations.length > 0) {
+      const index = conversations.findIndex((c) => c.id === selectedId);
+      const step = action === "nextChat" ? 1 : -1;
+      const next = index === -1 ? 0 : Math.min(Math.max(index + step, 0), conversations.length - 1);
+      select(conversations[next].id);
+    }
+  });
+
   function closeChat() {
     setSelectedId(null);
+    setReplyTo(null);
     setMessages([]);
     setHistoryCursor(null);
     setHasOlder(false);
@@ -383,7 +461,10 @@ export default function Home() {
     disconnect();
     await api("/api/auth/logout", { method: "POST" }).catch(() => {});
     clearToken();
-    router.replace("/login");
+    // A full navigation clears the login route's in-memory step state. Client-side
+    // routing can preserve the previous OTP step when logging out and back in.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = "/login";
   }
 
   if (error) return <p className={styles.error}>{error}</p>;
@@ -394,8 +475,8 @@ export default function Home() {
 
   return (
     <div className={styles.app} data-chat-open={openId === null ? "false" : "true"}>
-      <NavRail me={me} tab={tab} onTab={setTab} onLogout={logout} />
-      {tab === "settings" && <Settings me={me} onSaved={setMe} onBack={() => setTab("chats")} onLogout={logout} />}
+      <NavRail me={me} tab={tab} onTab={setTab} onLogout={logout} onDemoGuide={() => setShowDemoGuide(true)} />
+      {tab === "settings" && <Settings me={me} onSaved={setMe} onBack={() => setTab("chats")} onLogout={logout} onShowShortcuts={() => setShowShortcuts(true)} />}
       {(tab === "calls" || tab === "stories") && <ComingSoon tab={tab} />}
       {tab === "chats" && (
         <>
@@ -451,12 +532,21 @@ export default function Home() {
                     isGroup={selected.type === "group"}
                     typingUserIds={typingInSelected}
                     onRetry={retry}
+                    onReply={setReplyTo}
+                    onReact={react}
                     onLoadOlder={loadOlder}
                     hasOlder={hasOlder}
                     loadingOlder={loadingOlder}
                   />
                 )}
-                <MessageComposer key={selected.id} conversationId={selected.id} onSend={send} />
+                <MessageComposer
+                  key={selected.id}
+                  conversationId={selected.id}
+                  onSend={send}
+                  myId={me.id}
+                  replyTo={replyTo}
+                  onCancelReply={() => setReplyTo(null)}
+                />
               </>
             ) : (
               <div className={styles.empty}>
@@ -488,6 +578,8 @@ export default function Home() {
           onClose={() => setShowSafety(false)}
         />
       )}
+      {showShortcuts && <ShortcutsDialog onClose={() => setShowShortcuts(false)} />}
+      {showDemoGuide && <DemoGuide onClose={() => setShowDemoGuide(false)} />}
       <Toaster />
     </div>
   );

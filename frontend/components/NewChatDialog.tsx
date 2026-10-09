@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Users } from "lucide-react";
+import { UserPlus, Users } from "lucide-react";
 import Dialog from "@/components/Dialog";
 import MemberPicker from "@/components/MemberPicker";
 import PersonRow from "@/components/PersonRow";
@@ -18,15 +18,16 @@ type Props = {
 };
 
 // The compose button's dialog: pick a person (opens or creates the direct chat),
-// or "New group": pick members, then name it.
+// "New group": pick members, then name it, or "Add contact": find people and add them (D88).
 export default function NewChatDialog({ onClose, onOpen }: Props) {
-  const [step, setStep] = useState<"person" | "members" | "name">("person");
+  const [step, setStep] = useState<"person" | "members" | "name" | "contact">("person");
   const [query, setQuery] = useState("");
   const { people, searching, refresh } = usePeople(query);
   const [selected, setSelected] = useState<Person[]>([]);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [added, setAdded] = useState<number[]>([]); // added in this dialog: keep their rows, marked "Added"
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -49,8 +50,16 @@ export default function NewChatDialog({ onClose, onOpen }: Props) {
     run(async () => {
       await api("/api/contacts", { method: "POST", body: JSON.stringify({ user_id: person.id }) });
       toast(`${person.display_name} added to contacts`);
-      refresh();
+      setAdded((ids) => [...ids, person.id]);
     });
+
+  // Steps that share the search box start empty; back on New chat the contact list is refetched.
+  function goTo(next: typeof step) {
+    setQuery("");
+    setError("");
+    if (next === "person") refresh();
+    setStep(next);
+  }
 
   const createGroup = () =>
     run(async () => {
@@ -79,6 +88,55 @@ export default function NewChatDialog({ onClose, onOpen }: Props) {
         }
       >
         <MemberPicker selected={selected} onChange={setSelected} />
+      </Dialog>
+    );
+  }
+
+  if (step === "contact") {
+    // Search results minus people who already are contacts (except the ones just added here).
+    const found = searching ? people.filter((p) => !p.is_contact || added.includes(p.id)) : [];
+    return (
+      <Dialog
+        title="Add contact"
+        onClose={onClose}
+        footer={
+          <button className={button} onClick={() => goTo("person")}>
+            Back
+          </button>
+        }
+      >
+        <input
+          className={styles.search}
+          placeholder="Search name or number"
+          aria-label="Search people to add"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          data-autofocus
+        />
+        {error && <p className={styles.error}>{error}</p>}
+        <div className={styles.list}>
+          {found.map((p) => (
+            <PersonRow key={p.id} person={p} subtitle={p.phone}>
+              {added.includes(p.id) ? (
+                <span className={styles.label}>Added</span>
+              ) : (
+                <button
+                  className={styles.smallButton}
+                  onClick={() => addContact(p)}
+                  disabled={busy}
+                  aria-label={`Add ${p.display_name} to contacts`}
+                >
+                  Add
+                </button>
+              )}
+            </PersonRow>
+          ))}
+          {found.length === 0 && (
+            <p className={styles.empty}>
+              {searching ? "No one new found. They may already be in your contacts." : "Search by name or phone number to find people."}
+            </p>
+          )}
+        </div>
       </Dialog>
     );
   }
@@ -141,20 +199,15 @@ export default function NewChatDialog({ onClose, onOpen }: Props) {
           </span>
           New group
         </button>
+        <button className={styles.action} onClick={() => goTo("contact")}>
+          <span className={styles.actionIcon}>
+            <UserPlus size={18} />
+          </span>
+          Add contact
+        </button>
         <div className={styles.section}>{searching ? "Search results" : "Contacts"}</div>
         {people.map((p) => (
-          <PersonRow key={p.id} person={p} subtitle={p.phone} onClick={() => !busy && openChat(p)}>
-            {!p.is_contact && (
-              <button
-                className={styles.smallButton}
-                onClick={() => addContact(p)}
-                disabled={busy}
-                aria-label={`Add ${p.display_name} to contacts`}
-              >
-                Add contact
-              </button>
-            )}
-          </PersonRow>
+          <PersonRow key={p.id} person={p} subtitle={p.phone} onClick={() => !busy && openChat(p)} />
         ))}
         {people.length === 0 && (
           <p className={styles.empty}>{searching ? "No people found" : "No contacts yet. Search by name or number."}</p>

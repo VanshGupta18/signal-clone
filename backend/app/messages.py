@@ -4,6 +4,8 @@ from fastapi import HTTPException
 
 MAX_CONTENT_LENGTH = 4000  # characters, after stripping
 STATUSES = ["sent", "delivered", "read"]  # receipt statuses, lowest first
+REACTIONS = ["❤️", "👍", "👎", "😂", "😮", "😢"]  # Signal's default set
+QUOTE_LENGTH = 100  # characters of the quoted message carried in `reply_to`
 NOW = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"  # SQL for "now", same format as the schema defaults
 
 # Ticks on a message (D42): the lowest receipt status across its recipients, as an index
@@ -41,9 +43,13 @@ def fetch_messages(
         f"""
         SELECT m.id, m.conversation_id, m.sender_id, m.client_id, m.content, m.created_at,
                u.display_name AS sender_name, u.avatar_url AS sender_avatar_url,
-               CASE WHEN m.sender_id = ? THEN {STATUS_RANK_SQL} END AS status_rank
+               CASE WHEN m.sender_id = ? THEN {STATUS_RANK_SQL} END AS status_rank,
+               q.id AS quote_id, q.sender_id AS quote_sender_id, qu.display_name AS quote_sender_name,
+               substr(q.content, 1, {QUOTE_LENGTH}) AS quote_content
           FROM messages m
           JOIN users u ON u.id = m.sender_id
+          LEFT JOIN messages q ON q.id = m.reply_to_id
+          LEFT JOIN users qu ON qu.id = q.sender_id
          WHERE {where}
            {"AND m.id < ?" if before_id is not None else ""}
          ORDER BY m.id {"DESC" if before_id is not None or limit is not None else "ASC"}
@@ -52,6 +58,7 @@ def fetch_messages(
         (my_id, *params, *(() if before_id is None else (before_id,)), *((limit,) if limit is not None else ())),
     ).fetchall()
 
+    reactions = reactions_by_message(conn, [row["id"] for row in rows])
     messages = []
     for row in rows:
         status = None  # only my own messages carry ticks
@@ -68,18 +75,83 @@ def fetch_messages(
             "content": row["content"],
             "created_at": row["created_at"],
             "status": status,
+            "reply_to": None if row["quote_id"] is None else {
+                "id": row["quote_id"],
+                "sender_id": row["quote_sender_id"],
+                "sender_name": row["quote_sender_name"],
+                "content": row["quote_content"],
+            },
+            "reactions": reactions.get(row["id"], []),
         })
     if before_id is not None or limit is not None:
         messages.reverse()
     return messages
 
 
-def send_message(conn: turso.Connection, sender_id: int, conversation_id: int, content: str, client_id: str) -> tuple[dict, bool]:
+def reactions_by_message(conn: turso.Connection, message_ids: list[int]) -> dict[int, list[dict]]:
+    """message id -> [{emoji, user_ids, names}], one query for all the messages.
+    Most-used emoji first (ties: picker order), like Signal; people in reaction order."""
+    if not message_ids:
+        return {}
+    placeholders = ",".join("?" * len(message_ids))
+    rows = conn.execute(
+        f"""SELECT r.message_id, r.emoji, r.user_id, u.display_name
+              FROM message_reactions r JOIN users u ON u.id = r.user_id
+             WHERE r.message_id IN ({placeholders})
+             ORDER BY r.message_id, r.created_at, r.user_id""",
+        tuple(message_ids),
+    ).fetchall()
+    result: dict[int, list[dict]] = {}
+    for row in rows:
+        groups = result.setdefault(row["message_id"], [])
+        group = next((g for g in groups if g["emoji"] == row["emoji"]), None)
+        if group is None:
+            group = {"emoji": row["emoji"], "user_ids": [], "names": []}
+            groups.append(group)
+        group["user_ids"].append(row["user_id"])
+        group["names"].append(row["display_name"])
+    for groups in result.values():
+        groups.sort(key=lambda g: (-len(g["user_ids"]), REACTIONS.index(g["emoji"]) if g["emoji"] in REACTIONS else 99))
+    return result
+
+
+def set_reaction(conn: turso.Connection, user_id: int, message_id: int, emoji: str | None) -> tuple[int, list[dict]]:
+    """My reaction on a message: a new emoji adds/replaces it; null or my current emoji
+    removes it (Signal's toggle). Only members of the message's conversation may react.
+    Returns (conversation_id, the message's reactions after the change)."""
+    if emoji is not None and emoji not in REACTIONS:
+        raise HTTPException(status_code=400, detail="Unsupported reaction")
+    row = conn.execute(
+        """SELECT m.conversation_id FROM messages m
+             JOIN conversation_members cm ON cm.conversation_id = m.conversation_id AND cm.user_id = ?
+            WHERE m.id = ?""",
+        (user_id, message_id),
+    ).fetchone()
+    if row is None:  # 404 for "no such message" and "not your conversation" alike (D39)
+        raise HTTPException(status_code=404, detail="Message not found")
+    with conn:
+        current = conn.execute(
+            "SELECT emoji FROM message_reactions WHERE message_id = ? AND user_id = ?", (message_id, user_id)
+        ).fetchone()
+        if emoji is None or (current is not None and current["emoji"] == emoji):
+            conn.execute("DELETE FROM message_reactions WHERE message_id = ? AND user_id = ?", (message_id, user_id))
+        else:
+            conn.execute(
+                f"""INSERT INTO message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)
+                    ON CONFLICT(message_id, user_id) DO UPDATE SET emoji = excluded.emoji, created_at = {NOW}""",
+                (message_id, user_id, emoji),
+            )
+    return row["conversation_id"], reactions_by_message(conn, [message_id]).get(message_id, [])
+
+
+def send_message(
+    conn: turso.Connection, sender_id: int, conversation_id: int, content: str, client_id: str, reply_to_id: int | None = None
+) -> tuple[dict, bool]:
     """Validate, then persist message + receipts + activity time in one transaction.
 
     Returns (message, created). Idempotent: a retry with the same client_id returns the
     already-saved message with created=False and writes nothing.
-    Raises HTTPException (404 non-member, 400 bad content).
+    Raises HTTPException (404 non-member, 400 bad content or a reply to another chat's message).
     """
     require_member(conn, conversation_id, sender_id)
     content = content.strip()
@@ -87,12 +159,17 @@ def send_message(conn: turso.Connection, sender_id: int, conversation_id: int, c
         raise HTTPException(status_code=400, detail="Message is empty")
     if len(content) > MAX_CONTENT_LENGTH:
         raise HTTPException(status_code=400, detail=f"Message is longer than {MAX_CONTENT_LENGTH} characters")
+    # The quoted message must be in this same conversation (never trust the client's id).
+    if reply_to_id is not None and conn.execute(
+        "SELECT 1 FROM messages WHERE id = ? AND conversation_id = ?", (reply_to_id, conversation_id)
+    ).fetchone() is None:
+        raise HTTPException(status_code=400, detail="The message you replied to isn't in this chat")
 
     with conn:
         cursor = conn.execute(
-            """INSERT INTO messages (conversation_id, sender_id, client_id, content) VALUES (?, ?, ?, ?)
+            """INSERT INTO messages (conversation_id, sender_id, client_id, content, reply_to_id) VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(sender_id, client_id) DO NOTHING""",
-            (conversation_id, sender_id, client_id, content),
+            (conversation_id, sender_id, client_id, content, reply_to_id),
         )
         created = cursor.rowcount == 1
         if created:  # new message (0 = retry of one we already have)

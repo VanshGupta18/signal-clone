@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS messages (
     client_id        TEXT NOT NULL,
     content          TEXT NOT NULL CHECK (length(content) > 0),
     created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    reply_to_id      INTEGER REFERENCES messages(id) ON DELETE SET NULL,  -- quoted message, same conversation
     UNIQUE (sender_id, client_id)
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id);
@@ -85,6 +86,15 @@ CREATE TABLE IF NOT EXISTS message_receipts (
     PRIMARY KEY (message_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_receipts_user_status ON message_receipts(user_id, status);
+
+-- One reaction per user per message, like Signal: a new emoji replaces the old one.
+CREATE TABLE IF NOT EXISTS message_reactions (
+    message_id  INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    emoji       TEXT NOT NULL CHECK (length(emoji) <= 16),
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    PRIMARY KEY (message_id, user_id)
+);
 """
 
 
@@ -109,14 +119,32 @@ def init_db() -> None:
     _conn.row_factory = turso.Row  # rows readable by column name: row["id"]
     _conn.execute("PRAGMA foreign_keys = ON")  # off by default in SQLite
     _conn.executescript(SCHEMA)
+    migrate(_conn)
     _conn.commit()
     _push()
 
 
+def migrate(conn: turso.Connection) -> None:
+    """Columns added after the first deploy. CREATE TABLE IF NOT EXISTS skips existing tables,
+    so a database created by an older SCHEMA (production on Turso) gets them here. Idempotent."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()}
+    if "reply_to_id" not in columns:
+        conn.execute("ALTER TABLE messages ADD COLUMN reply_to_id INTEGER REFERENCES messages(id) ON DELETE SET NULL")
+
+
 def close_db() -> None:
+    """Shutdown. Takes the lock like every other user of the connection: on shutdown, closing
+    WebSockets still write last_seen_at from worker threads, and closing the connection under
+    a running write crashes pyturso ("end_write_tx called while write lock not held")."""
     global _conn
-    if _conn is not None:
-        push_pending()  # graceful shutdown (deploy, Render idle spin-down): don't strand commits
+    with _lock:
+        if _conn is None:
+            return
+        if _unpushed:  # graceful shutdown (deploy, Render idle spin-down): don't strand commits
+            try:
+                _push()
+            except Exception:
+                logger.exception("turso_push_failed_on_shutdown")
         _conn.close()
         _conn = None
 
@@ -159,6 +187,8 @@ def db(push_now: bool = True):
     global _unpushed
     waited_at = time.perf_counter()
     with _lock:
+        if _conn is None:  # after close_db(): fail cleanly instead of crashing on a closed handle
+            raise RuntimeError("database is closed")
         waited_ms = (time.perf_counter() - waited_at) * 1000
         if waited_ms > 25:
             logger.warning("db_lock_wait_ms=%.1f", waited_ms)

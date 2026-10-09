@@ -15,7 +15,7 @@ The backend runs on Render's free tier, which sleeps after about 15 minutes with
 
 ## Demo accounts
 
-Sign in with any of these numbers. The verification code is always **`123456`** (mock, no SMS is sent). Any other valid number creates a new account and asks for a name and optional photo.
+Sign in with any of these numbers. The verification code is always **`123456`** (mock, no SMS is sent). The login page has a **Demo accounts** dropdown that fills in the number, and the code is pre-filled for these accounts, so a demo login is: pick, Next, Continue. Any other valid number creates a new account and asks for a name and optional photo.
 
 | Phone | Name | What it shows |
 |---|---|---|
@@ -57,13 +57,19 @@ Alice, Bob, Carol and Dave all have each other as contacts. To try real-time fea
 **Signal experience**
 - Signal Desktop layout: nav rail, conversation list, chat pane; Signal's colors, bubbles and ticks.
 - Native modal dialogs (New chat, New group, Add members, Group info, Safety number), toasts for events and errors.
-- Settings: working Profile (name and photo), placeholder Privacy / Notifications / Appearance / Linked devices sections, Log out.
+- Settings: working Profile (name and photo), Appearance (Light / Dark / System theme) and Desktop notifications; placeholder Privacy / Linked devices sections and notification sound; Log out.
+- Add contact: New chat → "Add contact" searches people by name or number who aren't contacts yet and adds them.
+- Dark mode: a Signal-like dark palette (CSS variables in `globals.css`), saved per browser and applied before first paint.
+- Keyboard shortcuts (⌘ on Mac, Ctrl elsewhere): ⌘N (or ⌘⌥N) new chat, ⌘F / ⌘K search, ⌥↑ / ⌥↓ previous/next chat, ⌘, Settings, ⌘/ the shortcuts list (also in Settings).
+- Desktop notifications for new messages in chats that aren't open on screen (never for my own); clicking one opens that chat.
+- Reply / quote: hover a message → Reply; the composer shows a quote bar, and the sent bubble shows the quoted sender and snippet (click it to jump to the original). The server only accepts a reply to a message in the same chat.
+- Emoji reactions: hover → React → Signal's six (❤️ 👍 👎 😂 😮 😢). One reaction per person per message; the same emoji again removes it, a different one replaces it. Pills under the bubble show counts and who reacted, updated live for everyone.
 
 **Placeholders (allowed by the assignment)**
 - Calls and Stories tabs show "Coming soon"; video/voice call buttons show a toast.
 - Mock encryption notice in every chat and a mock "safety number" dialog for direct chats, both clearly labeled as not real encryption.
 
-Bonus features (attachments, reactions, reply/quote, disappearing messages, dark mode, responsive layout, keyboard shortcuts) are **not** implemented.
+Bonus features implemented: dark mode, keyboard shortcuts, desktop notifications, responsive layout, reply/quote, emoji reactions. Not implemented: attachments, disappearing messages.
 
 ## Tech stack
 
@@ -135,6 +141,9 @@ erDiagram
     conversations ||--o{ messages : contains
     users ||--o{ messages : sends
     messages ||--o{ message_receipts : has
+    messages ||--o{ message_reactions : has
+    users ||--o{ message_reactions : reacts
+    messages |o--o{ messages : "replied to by (reply_to_id)"
     users ||--o{ message_receipts : receives
     users ||--o{ conversations : "created_by"
 ```
@@ -187,7 +196,7 @@ erDiagram
 | role | TEXT | NOT NULL default 'member', CHECK IN ('admin', 'member') |
 | joined_at | TEXT | NOT NULL, default now |
 | last_read_message_id | INTEGER | NOT NULL default 0; the read cursor |
-| | | PK (conversation_id, user_id); INDEX `idx_members_user (user_id)` |
+| | | PK (conversation_id, user_id); INDEX `idx_members_user (user_id)`, `idx_members_user_read (user_id, last_read_message_id)` |
 
 **messages**
 | Column | Type | Notes |
@@ -198,7 +207,8 @@ erDiagram
 | client_id | TEXT | NOT NULL; client-generated UUID |
 | content | TEXT | NOT NULL, CHECK (length(content) > 0) |
 | created_at | TEXT | NOT NULL, default now (display only) |
-| | | UNIQUE (sender_id, client_id); INDEX `idx_messages_conversation (conversation_id, id)` |
+| reply_to_id | INTEGER | nullable, FK → messages ON DELETE SET NULL; the quoted message (server checks it is in the same conversation) |
+| | | UNIQUE (sender_id, client_id); INDEX `idx_messages_conversation (conversation_id, id)`, `idx_messages_conversation_sender (conversation_id, sender_id, id)` |
 
 **message_receipts** (one row per message per recipient; the sender has none)
 | Column | Type | Notes |
@@ -209,6 +219,17 @@ erDiagram
 | delivered_at | TEXT | nullable |
 | read_at | TEXT | nullable |
 | | | PK (message_id, user_id); INDEX `idx_receipts_user_status (user_id, status)` |
+
+**message_reactions** (one reaction per user per message, like Signal)
+| Column | Type | Notes |
+|---|---|---|
+| message_id | INTEGER | NOT NULL, FK → messages ON DELETE CASCADE |
+| user_id | INTEGER | NOT NULL, FK → users ON DELETE CASCADE |
+| emoji | TEXT | NOT NULL, CHECK (length(emoji) <= 16); the server only accepts Signal's six |
+| created_at | TEXT | NOT NULL, default now |
+| | | PK (message_id, user_id): a new emoji replaces the old one |
+
+**Migrations.** `CREATE TABLE IF NOT EXISTS` doesn't add columns to existing tables, so `init_db()` runs a small idempotent `migrate()` after the schema: if `messages.reply_to_id` is missing (a database created before replies existed, like production), it runs `ALTER TABLE ... ADD COLUMN`. This was tested on an old-schema database and on a local copy of the production data.
 
 Key design choices:
 - **One `conversations` table + `conversation_members` for both chat types.** Membership checks, history, sending and unread counts use one code path; `type` covers the few differences.
@@ -250,7 +271,7 @@ Every client event is JSON with a `type`. Any user or sender id inside a client 
 
 | Direction | Type | Payload | Notes |
 |---|---|---|---|
-| C → S | `message:send` | `conversation_id, content, client_id` | Validate, persist, ack, broadcast |
+| C → S | `message:send` | `conversation_id, content, client_id, reply_to_id?` | Validate (a reply must quote a message in the same chat), persist, ack, broadcast |
 | S → C | `message:ack` | `client_id, message` | To the sending socket only; `message` has the history shape |
 | S → C | `message:new` | `message` | To all members' sockets except the sending one; not sent for retries |
 | C → S | `message:delivered` | `message_ids?: int[]`, `up_to_id?: int` | Live ack of `message:new`, or catch-up after reconnect |
@@ -262,6 +283,8 @@ Every client event is JSON with a `type`. Any user or sender id inside a client 
 | S → C | `presence:update` | `user_id, online, last_seen_at` | When a user's first socket opens / last socket closes; sent to people who share a chat |
 | S → C | `conversation:new` | `conversation_id` | A chat I'm in was created; reload the list |
 | S → C | `member:update` | `conversation_id, actor_id, added_user_ids?` or `removed_user_id?` | Group membership changed (also sent to the removed user); reload |
+| C → S | `reaction:set` | `message_id, emoji \| null` | Membership checked; only Signal's six emoji; the same emoji again or `null` removes mine |
+| S → C | `reaction:update` | `message_id, conversation_id, reactions: [{emoji, user_ids}]` | To every member's sockets, mine included |
 | S → C | `error` | `client_id \| null, detail` | e.g. "Conversation not found", "Message is empty" |
 
 Close code **4401** means the token is invalid; the client then clears it and goes to the login screen instead of reconnecting. Other closes reconnect with exponential backoff (1 s, 2 s, 4 s, 8 s, then every 10 s); on every reconnect the client re-fetches the list and open chat, resends its outbox and sends the delivered catch-up and read.
@@ -362,9 +385,11 @@ Why this split:
 - **No pagination.** A chat's full history is loaded when it is opened.
 - **Presence edge cases.** On a backend restart, `last_seen_at` is not written for connections that were cut.
 - **Usernames are not supported**: sign-in is phone-only (the `users.username` column exists but is unused).
-- **Settings** except Profile are placeholders; read receipts, typing indicators and online status are always on.
-- **Desktop only.** The layout targets desktop widths; it is not responsive.
-- **Not implemented (bonus):** attachments, reactions, reply/quote, disappearing messages, dark mode, keyboard shortcuts, full-text message search.
+- **Settings**: Privacy, Linked devices and notification sound are placeholders; read receipts, typing indicators and online status are always on. Theme and notification choices are saved per browser (`localStorage`), not per account.
+- **Notifications** only arrive while the tab is open (no service worker / push), and need the browser's permission. Chrome reserves ⌘N/Ctrl+N for a new window, so the app also accepts ⌘⌥N / Ctrl+Alt+N; ⌘, may open the browser's own settings in some browsers.
+- **Responsive, desktop-first.** Below 700 px the list and chat switch (an open chat gets the full screen, with a back button) and dialogs fit the screen. It is tested at 390×844, but not polished as a native mobile app.
+- **Reply jump** only scrolls to the quoted message if it's already loaded (history is paginated); otherwise nothing happens.
+- **Not implemented (bonus):** attachments, disappearing messages, full-text message search.
 
 ## Project structure
 
@@ -394,11 +419,14 @@ signal-clone/
     ├── components/             NavRail, ConversationList/Item, ChatHeader, MessageList,
     │                           MessageBubble, MessageComposer, Avatar, Dialog, NewChatDialog,
     │                           MemberPicker, PersonRow, GroupDetails, SafetyNumberDialog,
-    │                           Settings, ComingSoon, Toast
+    │                           Settings, ShortcutsDialog, ComingSoon, Toast
     ├── lib/
     │   ├── api.ts              fetch wrapper, token storage, 401 → login
     │   ├── socket.ts           WebSocket client: reconnect, outbox, listeners
     │   ├── people.ts           contacts / user search hook
+    │   ├── theme.ts            Light / Dark / System theme (localStorage + data-theme)
+    │   ├── shortcuts.ts        keyboard shortcuts hook + the list shown in the dialog
+    │   ├── notifications.ts    desktop notifications: permission, on/off preference
     │   ├── image.ts            avatar resize to a small JPEG data URL
     │   └── time.ts             Signal-style time formatting
     └── types/index.ts          API and WebSocket types (match the backend shapes)

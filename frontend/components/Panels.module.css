@@ -3,7 +3,7 @@
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  background: #ffffff;
+  background: var(--bg);
 }
 
 .placeholder {
@@ -13,13 +13,13 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #5e5e5e;
+  color: var(--text-secondary);
 }
 
 .placeholder h2 {
   font-size: 20px;
   font-weight: 600;
-  color: #1b1b1b;
+  color: var(--text);
 }
 
 .placeholderIcon {
@@ -27,8 +27,8 @@
   height: 80px;
   margin-bottom: 12px;
   border-radius: 50%;
-  background: #e9e9e9;
-  color: #5e5e5e;
+  background: var(--hover);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -37,7 +37,7 @@
 .paneEmpty {
   padding: 24px 12px;
   text-align: center;
-  color: #848484;
+  color: var(--text-tertiary);
 }
 
 /* Settings left nav */
@@ -58,7 +58,7 @@
   border-radius: 8px;
   background: none;
   font: inherit;
-  color: #1b1b1b;
+  color: var(--text);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -67,17 +67,17 @@
 }
 
 .navItem:hover {
-  background: #f0f0f0;
+  background: var(--surface);
 }
 
 .navSelected,
 .navSelected:hover {
-  background: #dedede;
+  background: var(--selected);
 }
 
 .logout {
   margin-top: auto;
-  color: #d00b0b;
+  color: var(--danger);
 }
 
 /* Settings right side */
@@ -95,7 +95,7 @@
 .row {
   min-height: 52px;
   padding: 8px 0;
-  border-bottom: 1px solid #e9e9e9;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -110,7 +110,7 @@
 
 .hint {
   font-size: 13px;
-  color: #5e5e5e;
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 
@@ -118,28 +118,33 @@
   flex-shrink: 0;
   padding: 2px 8px;
   border-radius: 10px;
-  background: #f0f0f0;
+  background: var(--surface);
   font-size: 12px;
-  color: #5e5e5e;
+  color: var(--text-secondary);
 }
 
 .note {
   margin-top: 16px;
   font-size: 13px;
-  color: #5e5e5e;
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 
-/* A disabled on/off switch (placeholders only). */
+/* An on/off switch; disabled = a "Coming soon" placeholder. */
 .switch {
   appearance: none;
   flex-shrink: 0;
   width: 36px;
   height: 20px;
   border-radius: 10px;
-  background: #b9b9b9;
+  background: var(--border-strong);
   position: relative;
+  cursor: pointer;
+}
+
+.switch:disabled {
   opacity: 0.5;
+  cursor: default;
 }
 
 .switch::after {
@@ -168,11 +173,10 @@
   gap: 16px;
 }
 
-.avatarButton {
+.avatarEditor {
   position: relative;
-  border: none;
-  background: none;
-  cursor: pointer;
+  width: 80px;
+  height: 80px;
 }
 
 .cameraBadge {
@@ -182,12 +186,36 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 2px solid #ffffff;
-  background: #e9e9e9;
-  color: #1b1b1b;
+  border: 2px solid var(--bg);
+  background: var(--hover);
+  color: var(--text);
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.cameraBadge:hover {
+  background: var(--surface);
+}
+
+.removePhoto {
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.removePhoto:hover {
+  text-decoration: underline;
+}
+
+.removePhoto:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .field {
@@ -196,18 +224,18 @@
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
-  color: #5e5e5e;
+  color: var(--text-secondary);
 }
 
 .input {
   width: 100%;
   height: 40px;
   padding: 0 12px;
-  border: 1px solid #b9b9b9;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   font: inherit;
   font-size: 14px;
-  color: #1b1b1b;
+  color: var(--text);
   outline: none;
 }
 
@@ -217,7 +245,7 @@
 
 .phone {
   font-size: 14px;
-  color: #1b1b1b;
+  color: var(--text);
 }
 
 .actions {
@@ -227,6 +255,23 @@
 }
 
 .error {
-  color: #d00b0b;
+  color: var(--danger);
   font-size: 13px;
+}
+
+/* Appearance: Light / Dark / System radio buttons */
+.choices {
+  display: flex;
+  gap: 16px;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.choice input {
+  accent-color: #2c6bed;
 }
